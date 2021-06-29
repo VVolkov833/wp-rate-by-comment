@@ -1,0 +1,1 @@
+# wp-rate-by-comment
