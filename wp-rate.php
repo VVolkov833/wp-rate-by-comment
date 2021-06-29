@@ -130,6 +130,7 @@ class FCP_Comment_Rate {
         $width = round( 100 / ( self::$stars - 1 + self::$star_proportions ), 5 );
         $height = round( $width * self::$star_proportions, 5 );
         $wh_radio = round( 100 / self::$stars, 5 );
+        // ++ can't really get the accurate width by height, so gotta count background-width for .cr_rating_bar > div
 
         ?>
         <style>
