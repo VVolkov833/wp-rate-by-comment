@@ -24,9 +24,9 @@
     opacity:0;
 }
 .cr_form label {
-    width:var(--cr_input-size);
+    width:var(--cr_star-size);
     height:auto;
-    padding-bottom:var(--cr_input-size);
+    padding-bottom:var(--cr_star-size);
     position:relative;
     cursor:pointer;
 }
