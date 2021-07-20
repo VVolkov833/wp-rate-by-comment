@@ -30,7 +30,7 @@ class FCP_Comment_Rate {
 
         $this->plugin_setup();
 
-        add_filter( 'allow_empty_comment', '__return_true' ); // ++ add post type limitations to this too
+        add_filter( 'allow_empty_comment', '__return_true' ); // ++ add post type limitations to this too ++ custom
         //add_filter( 'preprocess_comment', [$this, 'filter_comment'] );
         //add_action( 'comment_post', [$this, 'form_fields_save'] ); // ++ add post type limitations to this too
 
@@ -39,7 +39,8 @@ class FCP_Comment_Rate {
             global $post;
             if ( !in_array( $post->post_type, self::$types ) ) { return; }
 
-            if ( !self::is_replying() ) { // only the review can have the rating
+            // only the review can have the rating
+            if ( !self::is_replying() ) {
 
                 // wrap the main fields to fit the rating in
                 add_action( 'comment_form_top', function() {
@@ -57,12 +58,15 @@ class FCP_Comment_Rate {
                 add_action( 'comment_form', [$this, 'form_fields_layout'] );
 
             }
+            
+            // reply form right after the comment
+            // wp_enqueue_script( 'comment-reply' ); // ++ do a custom variant, as this just moves the form with stars
 
             // not logged in layout fixes
-            // remove not used fields for not logged-in-s ++ try to move to wp
+            // remove not used fields for not logged-in-s
             add_filter( 'comment_form_default_fields', function($fields) {
                 unset( $fields['url'] );
-                unset( $fields['cookies'] ); // can modify later, instead of hidding
+                unset( $fields['cookies'] );
                 return $fields;
             });
             // comments form change fields order
@@ -94,25 +98,29 @@ class FCP_Comment_Rate {
             
             //add_filter( 'comment_text', [$this, 'comment_rating_draw'], 30 );
 
+            // styling the stars
             add_action( 'wp_enqueue_scripts', [$this, 'styles_scripts_add'] );
             add_action( 'wp_footer', [$this, 'styles_dynamic_print'] );
 
         });
 
-        // stop storing user data ++ try to move to wp
+        // stop storing user data ++ try to move to wp ++ can remove it manually on save?
         add_filter( 'pre_comment_user_ip', function($a) { return ''; } );
         add_filter( 'pre_comment_user_agent', function($a) { return ''; } );
         add_filter( 'pre_comment_author_url', function($a) { return ''; } );
         
-        // filter the comments actions
-        //add_action( 'bulk_actions-edit-comments', [$this, 'filter_comments_actions'] ); // ++ ^
-        //add_action( 'comment_row_actions', [$this, 'filter_comments_actions'] ); // ++ ^
-
+        // limit the permissions
+        // hide the links in admin
+        add_action( 'bulk_actions-edit-comments', [$this, 'filter_comments_actions_view'] );
+        add_action( 'comment_row_actions', [$this, 'filter_comments_actions_view'] );
+        
+        // check permissions on comments' actions
+        add_action( 'admin_init', [$this, 'filter_comments_actions'] );
     }
-    
+
     public function form_fields_layout($a) {
         ?>
-        <div class="<?php echo self::$pr ?>form wp-block-column" style="flex-basis:33.33%;order:2">
+        <div class="<?php echo self::$pr ?>form wp-block-column" style="flex-basis:33.33%;">
         <h3 class="with-line"><?php _e( 'Rate' ) ?></h3>
         <?php
             foreach ( self::$ratings as $v ) {
@@ -134,12 +142,6 @@ class FCP_Comment_Rate {
         <?php } ?>
         </div>
         <?php
-        
-        /* ++for faster reply, but modify to not leave the stars
-        if ( is_singular() && get_option( 'thread_comments' ) ) {
-            wp_enqueue_script( 'comment-reply' );
-        }
-        */
     }
     
     private function comment_stars_wrap_layout($title, $stars) {
@@ -226,7 +228,8 @@ class FCP_Comment_Rate {
 
     }
     
-    public function filter_comments_actions($actions) {
+    public function filter_comments_actions_view($actions) {
+
         if ( !self::can_reply() ) {
             unset(
                 $actions['reply']
@@ -246,6 +249,45 @@ class FCP_Comment_Rate {
         }
 
         return $actions;
+    }
+
+    public function filter_comments_actions() { // ++ajax actions are still intact :(
+        if ( !isset( $_GET['action'] ) && !isset( $_POST['action'] ) ) { return; }
+
+        if ( !self::can_reply() ) {
+        
+            $forbidden_post_actions = [
+                'replyto-comment'
+            ];
+
+            if ( isset( $_POST['action'] ) && in_array( $_POST['action'], $forbidden_post_actions ) ) {
+                die( 'Access denied' );
+            }
+        }
+        
+        if ( !self::can_edit() ) {
+
+            $forbidden_get_actions = [
+                'approvecomment',
+                'unapprovecomment',
+                'editcomment',
+                'spamcomment',
+                'trashcomment'
+            ];
+            
+            $forbidden_post_actions = [
+                'edit-comment', // quic edit
+                'editedcomment' // the edit interface
+            ];
+
+            if ( isset( $_GET['action'] ) && in_array( $_GET['action'], $forbidden_get_actions ) ) {
+                die( 'Access denied' );
+            }
+
+            if ( isset( $_POST['action'] ) && in_array( $_POST['action'], $forbidden_post_actions ) ) {
+                die( 'Access denied' );
+            }
+        }
     }
 
 //-----__--___-__--_______STATICS to print in templates -------___--_______-
@@ -385,21 +427,36 @@ class FCP_Comment_Rate {
         return false;
     }
     public static function can_reply() {
-        global $comment;
+        if ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
+            $comment = get_comment( $_POST['comment_ID'] );
+            
+        } else { // filter the front-end inside the comments loop
+            global $comment;
+        }
+        
         if (
             !$comment->comment_parent && // only 2 lvls
-            current_user_can( 'edit_post' )
+            current_user_can( 'edit_post', $comment->comment_post_ID )
         ) {
             return true;
         }
+
         return false;
     }
     public static function can_edit() {
-        global $comment;
+        if ( isset( $_GET['action'] ) && isset( $_GET['c'] ) ) { // filter the admin screens & get actions
+            $comment = get_comment( $_GET['c'] );
+            
+        } elseif ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
+            $comment = get_comment( $_POST['comment_ID'] );
+            
+        } else { // filter the front-end inside the comments loop
+            global $comment;
+        }
+
         if (
             (
-                //current_user_can( 'edit_comment', $comment->comment_ID ) &&
-                    // edit_comment_link() already has this filter
+                current_user_can( 'edit_comment', $comment->comment_ID ) &&
                 $comment->user_id == get_current_user_id()
             ) ||
             current_user_can( 'administrator' )
