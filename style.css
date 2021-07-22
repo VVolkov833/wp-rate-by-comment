@@ -12,25 +12,25 @@
 }
 
 /* form */
-.cr_form .cr_radio_bar {
+.cr_fields .cr_radio_bar {
     display:flex;
     flex-direction:row-reverse;
     justify-content:flex-end;
 }
 
-.cr_form input {
+.cr_fields input {
     position:absolute;
     z-index:-1;
     opacity:0;
 }
-.cr_form label {
+.cr_fields label {
     width:var(--cr_star-size);
     height:auto;
     padding-bottom:var(--cr_star-size);
     position:relative;
     cursor:pointer;
 }
-.cr_form label::before {
+.cr_fields label::before {
     content:'';
     display:block;
     width:100%;
@@ -54,9 +54,9 @@
     */
 }
 
-.cr_form input:checked ~ label::before,
-.cr_form label:hover::before,
-.cr_form label:hover ~ label::before {
+.cr_fields input:checked ~ label::before,
+.cr_fields label:hover::before,
+.cr_fields label:hover ~ label::before {
     background-color:var(--cr_star-color);
     mask-image:var(--cr_star);
     -webkit-mask-image:var(--cr_star);

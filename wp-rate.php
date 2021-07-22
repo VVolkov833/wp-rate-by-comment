@@ -30,7 +30,7 @@ class FCP_Comment_Rate {
 
         $this->plugin_setup();
 
-        add_filter( 'allow_empty_comment', '__return_true' ); // ++ add post type limitations to this too ++ custom
+        //add_filter( 'allow_empty_comment', '__return_true' ); // ++ add post type limitations to this too ++ custom
         //add_filter( 'preprocess_comment', [$this, 'filter_comment'] );
         //add_action( 'comment_post', [$this, 'form_fields_save'] ); // ++ add post type limitations to this too
 
@@ -44,7 +44,7 @@ class FCP_Comment_Rate {
 
                 // wrap the main fields to fit the rating in
                 add_action( 'comment_form_top', function() {
-                    echo '<div class="wp-block-column">';
+                    echo '<div class="' . self::$pr . 'init-fields wp-block-column">';
                 });
                 add_action( 'comment_form', function() {
                     echo '</div>';
@@ -62,40 +62,8 @@ class FCP_Comment_Rate {
             // reply form right after the comment
             // wp_enqueue_script( 'comment-reply' ); // ++ do a custom variant, as this just moves the form with stars
 
-            // not logged in layout fixes
-            // remove not used fields for not logged-in-s
-            add_filter( 'comment_form_default_fields', function($fields) {
-                unset( $fields['url'] );
-                unset( $fields['cookies'] );
-                return $fields;
-            });
-            // comments form change fields order
-            add_filter( 'comment_form_fields', function($fields){
-
-                $new_order = ['author', 'email', 'comment'];
-                $new_fields = [];
-
-                foreach ( $new_order as $k ) {
-                    $new_fields[ $k ] = $fields[ $k ];
-                    unset( $fields[ $k ] );
-                }
-
-                if ( $fields ) {
-                    foreach( $fields as $k => $v ) {
-                        $new_fields[ $k ] = $v;
-                    }
-                }
-
-                return $new_fields;
-            });
-            
-            // customize the form defaults
-            add_filter( 'comment_form_defaults', function($d) {
-                $d['comment_notes_before'] = '';
-                $d['logged_in_as'] = '';
-                return $d;
-            });
-            
+            $this->form_view_fixes();
+           
             //add_filter( 'comment_text', [$this, 'comment_rating_draw'], 30 );
 
             // styling the stars
@@ -109,7 +77,7 @@ class FCP_Comment_Rate {
         add_filter( 'pre_comment_user_agent', function($a) { return ''; } );
         add_filter( 'pre_comment_author_url', function($a) { return ''; } );
         
-        // limit the permissions
+        // limit the permissions ++move the following to costom post type limitation
         // hide the links in admin
         add_action( 'bulk_actions-edit-comments', [$this, 'filter_comments_actions_view'] );
         add_action( 'comment_row_actions', [$this, 'filter_comments_actions_view'] );
@@ -118,9 +86,80 @@ class FCP_Comment_Rate {
         add_action( 'admin_init', [$this, 'filter_comments_actions'] );
     }
 
+    public function form_view_fixes() {
+
+        // not logged in layout fixes
+        // remove not used fields for not logged-in-s
+        add_filter( 'comment_form_default_fields', function($fields) {
+            unset( $fields['url'] );
+            unset( $fields['cookies'] );
+            return $fields;
+        });
+
+        // the form fields order change
+        add_filter( 'comment_form_fields', function($fields){
+
+            $new_order = ['author', 'email', 'comment'];
+            $new_fields = [];
+
+            foreach ( $new_order as $k ) {
+                $new_fields[ $k ] = $fields[ $k ];
+                unset( $fields[ $k ] );
+            }
+
+            if ( $fields ) {
+                foreach( $fields as $k => $v ) {
+                    $new_fields[ $k ] = $v;
+                }
+            }
+
+            return $new_fields;
+        });
+        
+        // customize the form defaults
+        add_filter( 'comment_form_defaults', function($d) {
+            $d['comment_notes_before'] = '';
+            $d['logged_in_as'] = '';
+
+            $d['title_reply'] = FCP_Comment_Rate::is_replying() ? __( 'Leave a reply to' ) : __( 'Leave a Review' );
+
+            $d['fields']['author'] = '
+                <p class="comment-form-author">
+                    <input id="author" name="author" type="text" value="" size="30" placeholder="' . __( 'Name' ) . '*" required="required" maxlength="245" />
+                </p>
+            ';
+
+            $d['fields']['email'] = '
+                <p class="comment-form-email">
+                    <label>
+                        <input id="email" name="email" type="text" value="" size="30" aria-describedby="email-notes" placeholder="' . __( 'Email' ) . '*" required="required" maxlength="100" />
+                    </label>
+                </p>
+            ';
+
+            $d['comment_field'] = '
+                <p class="comment-form-comment">
+                    <label>
+                        <textarea id="comment" name="comment" cols="45" rows="8" placeholder="' .
+                        ( FCP_Comment_Rate::is_replying() ? __( 'Your Reply' ) : __( 'Your Review' ) ) .
+                        '*" maxlength="65525"></textarea>
+                    </label>
+                </p>
+            ';
+
+            $d['submit_button'] = '
+                <input name="submit" type="submit" id="submit" class="submit" value="' .
+                ( FCP_Comment_Rate::is_replying() ? __( 'Reply' ) : __( 'Post Review' ) ) .
+                '">
+            ';
+
+            return $d;
+        });
+    }
+
     public function form_fields_layout($a) {
         ?>
-        <div class="<?php echo self::$pr ?>form wp-block-column" style="flex-basis:33.33%;">
+        <div class="<?php echo self::$pr ?>fields wp-block-column" style="flex-basis:33.33%">
         <h3 class="with-line"><?php _e( 'Rate' ) ?></h3>
         <?php
             foreach ( self::$ratings as $v ) {
@@ -210,7 +249,7 @@ class FCP_Comment_Rate {
             .cr_rating_bar {
                 --<?php echo self::$pr ?>bar-height:<?php echo $height ?>%;
             }
-            .cr_form {
+            .cr_fields {
                 --<?php echo self::$pr ?>star-size:<?php echo $wh_radio ?>%;
             }
         </style>
@@ -310,6 +349,9 @@ class FCP_Comment_Rate {
     }
 
     public static function stars_layout($stars = 0) {
+
+        if ( !$stars) { return; }
+    
         $stars = $stars > self::$stars ? self::$stars : $stars;
         $width = round( $stars / self::$stars * 100, 5 );
         
@@ -329,12 +371,12 @@ class FCP_Comment_Rate {
         if ( !$comments ) { return; }
         
         $a = [
-            'per_nomination_sum' => [],
-            'not_zero_stars_amo' => [],
+            'per_nomination_sum' => [], // total per nomination
+            'not_zero_stars_amo' => [], // number of rated comments by nomination with stars > 0 (aka filled)
             'per_nomination_avg' => [], // total / filled
             'cast_weights' => [],
-            'per_nomination_wtd' => [], // avg * weight
-            'not_zero_ratings_amo' => 0,
+            'per_nomination_wtd' => [], // avg * casted weight
+            'not_zero_ratings_amo' => 0, // <= count( self::$ratings )
             'total_avg' => 0,
             'total_wtd' => 0,
         ];
@@ -382,8 +424,12 @@ class FCP_Comment_Rate {
 
         }
 
-        $a['total_avg'] = array_sum( $a['per_nomination_avg'] ) / $a['not_zero_ratings_amo'];
-        $a['total_wtd'] = array_sum( $a['per_nomination_wtd'] ) / $a['not_zero_ratings_amo'];
+        $a['total_avg'] = $a['not_zero_ratings_amo'] ?
+            array_sum( $a['per_nomination_avg'] ) / $a['not_zero_ratings_amo'] :
+            0;
+        $a['total_wtd'] = $a['not_zero_ratings_amo'] ?
+            array_sum( $a['per_nomination_wtd'] ) / $a['not_zero_ratings_amo'] :
+            0;
 
         $result = $a['per_nomination_wtd'];
         $result['__total'] = $a['total_wtd'];
@@ -408,7 +454,7 @@ class FCP_Comment_Rate {
     }
 
     public static function is_replying() {
-        if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { // && is_singular()
+        if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { // ++ && is_singular()?
             return true;
         }
         if ( isset( $_POST['comment_parent'] ) && $_POST['comment_parent'] != '0' ) {
