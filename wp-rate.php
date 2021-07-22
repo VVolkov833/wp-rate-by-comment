@@ -63,7 +63,33 @@ class FCP_Comment_Rate {
             // wp_enqueue_script( 'comment-reply' ); // ++ do a custom variant, as this just moves the form with stars
 
             $this->form_view_fixes();
-           
+
+            // modify the comments printing function wp_list_comments()
+            add_filter( 'wp_list_comments_args', function($a) {
+                $new_args = [
+                    'avatar_size' => 80,
+                    'max_depth' => 2,
+                    'style'       => 'div',
+                    'callback' => [$this, 'comment_print'],
+                    'short_ping'  => true,
+                    'reply_text'  => 'Reply to this review',
+                    'reverse_top_level' => true,
+                    'reverse_children' => true
+                ];
+                $a = array_merge( $a, $new_args );
+                return $a;
+            });
+
+            // hide the form on conditions
+            add_filter( 'comments_open', function ( $open, $post_id ) {
+                // only the page author & admin can reply the reviews
+                // ++add the $_POST filter!!!
+                if ( !FCP_Comment_Rate::is_replying() || FCP_Comment_Rate::can_post_a_reply() ) {
+                    return true;
+                }
+                return false;
+            }, 10, 2 );
+
             //add_filter( 'comment_text', [$this, 'comment_rating_draw'], 30 );
 
             // styling the stars
@@ -84,6 +110,69 @@ class FCP_Comment_Rate {
         
         // check permissions on comments' actions
         add_action( 'admin_init', [$this, 'filter_comments_actions'] );
+    }
+
+    public function comment_print( $comment, $args, $depth ) {
+        if ( 'div' === $args['style'] ) {
+            $tag       = 'div';
+            $add_below = 'comment';
+        } else {
+            $tag       = 'li';
+            $add_below = 'div-comment';
+        }
+
+        $classes = ' ' . comment_class( empty( $args['has_children'] ) ? '' : 'parent', null, null, false );
+        ?>
+
+    <<?php echo $tag, $classes; ?> id="comment-<?php comment_ID() ?>">
+
+        <div class="comment-author">
+            <?php
+
+            if ( $args['avatar_size'] != 0 ) {
+                echo get_avatar( $comment, $args['avatar_size'] );
+            }
+
+            echo get_comment_author();
+
+            ?>
+        </div>
+
+        <?php if ( $comment->comment_approved == '0' ) { ?>
+            <em class="comment-awaiting-moderation">
+                <?php _e( 'Your comment and rating are awaiting moderation.' ) ?>
+            </em><br/>
+        <?php } ?>
+
+        <div class="comment-content">
+            <?php comment_text() ?>
+        </div>
+
+        <div class="comment-more">
+            <?php
+            if ( FCP_Comment_Rate::can_reply() ) {
+                comment_reply_link(
+                    array_merge(
+                        $args,
+                        [
+                            'add_below' => $add_below,
+                            'depth'     => $depth,
+                            'max_depth' => $args['max_depth']
+                        ]
+                    )
+                );
+            }
+
+            if ( FCP_Comment_Rate::can_edit() ) {
+                edit_comment_link( __( 'Edit' ), '  ', '' );
+            }
+            
+            echo get_comment_date();
+            //echo get_comment_time();
+
+            ?>
+        </div>
+        <?php
     }
 
     public function form_view_fixes() {
@@ -118,6 +207,7 @@ class FCP_Comment_Rate {
         
         // customize the form defaults
         add_filter( 'comment_form_defaults', function($d) {
+            // modify the form printing function comment_form()
             $d['comment_notes_before'] = '';
             $d['logged_in_as'] = '';
 
@@ -510,6 +600,21 @@ class FCP_Comment_Rate {
             return true;
         }
         return false;
+    }
+    
+    public static function print_rating_summary() {
+        $ratings = FCP_Comment_Rate::ratings_count();
+
+        ?>
+        <div class="comment-rating-headline with-line">
+            Reviews (<?php echo get_comments_number() ?>)
+        </div>
+        <div class="comment-rating-total">
+        <?php FCP_Comment_Rate::stars_layout( $ratings['__total'] ) ?>
+        <?php echo $ratings['__total'] ? round( $ratings['__total'], 1 ) : '' ?>
+        </div>
+        <?php FCP_Comment_Rate::nominations_layout( $ratings ) ?>
+        <?php
     }
 
 }
