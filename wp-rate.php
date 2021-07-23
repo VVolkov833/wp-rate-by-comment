@@ -1,8 +1,13 @@
 <?php
 /*
 Plugin Name: Comment and Rate
-Description: Adds custom rating fields to a comment
-Version: 1.0.0
+Description: Adds custom rating fields to a particular post type's comments
+Version: 0.1.0
+Requires at least: 4.7
+Requires PHP: 5.2.4
+Author: Firmcatalyst, Vadim Volkov
+Text Domain: fcpcr
+Domain Path: /languages
 */
 
 defined( 'ABSPATH' ) || exit;
@@ -12,17 +17,17 @@ class FCP_Comment_Rate {
 	public static $dev = true, // developers mode, avoid caching js & css
                   $pr = 'cr_', // prefix (db, css)
                   $types = ['clinic'], // post types to support
-                  $ratings = ['Kompetenz', 'Freundlichkeit', 'Warte zeit für Termin', 'Räumlichkeit'], // nominations
+                  $ratings = ['Competence', 'Friendliness', 'Wait time for an appointment', 'Interior'], // nominations
                   //$weights = [8, 3.2, 2.4, 2], // any size, but proportionally correct in relation to each other
-                  $stars = 5,
-                  $star_proportions = 2 / 3; // star width (square) / image width
+                  $stars = 5, // max amount of stars
+                  $star_proportions = 2 / 3; // star width (square) / image width (w>h)
 	
 	private function plugin_setup() {
 
 		$this->self_url  = plugins_url( '/', __FILE__ );
 		$this->self_path = plugin_dir_path( __FILE__ );
 
-		$this->css_ver = '1.0.0' . ( self::$dev ? '.'.time() : '' );
+		$this->css_ver = '0.1.0' . ( self::$dev ? '.'.time() : '' );
 		$this->js_ver = '0.0.1' . ( self::$dev ? '.'.time() : '' );
 	}
 
@@ -70,7 +75,7 @@ class FCP_Comment_Rate {
                     'style'       => 'div',
                     'callback' => [$this, 'comment_print'],
                     'short_ping'  => true,
-                    'reply_text'  => 'Reply to this review',
+                    'reply_text'  => __( 'Reply to this review', 'fcpcr' ),
                     'reverse_top_level' => true,
                     'reverse_children' => true
                 ];
@@ -117,6 +122,11 @@ class FCP_Comment_Rate {
         // check permissions on comments' actions ++make sure it doesn't interfere with other post options
         add_action( 'admin_init', [$this, 'filter_comments_actions'] );
 
+        // add translation languages
+        add_action( 'plugins_loaded', function() {
+            load_plugin_textdomain( 'fcpcr', false, dirname( plugin_basename( __FILE__ ) ) . '/languages/' );
+        });
+        
     }
 
     public function comment_print( $comment, $args, $depth ) {
@@ -147,7 +157,7 @@ class FCP_Comment_Rate {
 
         <?php if ( $comment->comment_approved == '0' ) { ?>
             <em class="comment-awaiting-moderation">
-                <?php _e( 'Your comment and rating are awaiting moderation.' ) ?>
+                <?php _e( 'Your review is awaiting moderation.', 'fcpcr' ) ?>
             </em><br/>
         <?php } ?>
 
@@ -218,7 +228,7 @@ class FCP_Comment_Rate {
             $d['comment_notes_before'] = '';
             $d['logged_in_as'] = '';
 
-            $d['title_reply'] = FCP_Comment_Rate::is_replying() ? __( 'Leave a reply to' ) : __( 'Leave a Review' );
+            $d['title_reply'] = FCP_Comment_Rate::is_replying() ? __( 'Leave a reply to', 'fcpcr' ) : __( 'Leave a Review', 'fcpcr' );
 
             $d['fields']['author'] = '
                 <p class="comment-form-author">
@@ -238,7 +248,7 @@ class FCP_Comment_Rate {
                 <p class="comment-form-comment">
                     <label>
                         <textarea id="comment" name="comment" cols="45" rows="8" placeholder="' .
-                        ( FCP_Comment_Rate::is_replying() ? __( 'Your Reply' ) : __( 'Your Review' ) ) .
+                        ( FCP_Comment_Rate::is_replying() ? __( 'Your Reply', 'fcpcr' ) : __( 'Your Review', 'fcpcr' ) ) .
                         '*" maxlength="65525"></textarea>
                     </label>
                 </p>
@@ -246,7 +256,7 @@ class FCP_Comment_Rate {
 
             $d['submit_button'] = '
                 <input name="submit" type="submit" id="submit" class="submit" value="' .
-                ( FCP_Comment_Rate::is_replying() ? __( 'Reply' ) : __( 'Post Review' ) ) .
+                ( FCP_Comment_Rate::is_replying() ? __( 'Reply', 'fcpcr' ) : __( 'Post Review', 'fcpcr' ) ) .
                 '">
             ';
 
@@ -257,13 +267,13 @@ class FCP_Comment_Rate {
     public function form_fields_layout($a) {
         ?>
         <div class="<?php echo self::$pr ?>fields wp-block-column" style="flex-basis:33.33%">
-        <h3 class="with-line"><?php _e( 'Rate' ) ?></h3>
+        <h3 class="with-line"><?php _e( 'Rate', 'fcpcr' ) ?></h3>
         <?php
             foreach ( self::$ratings as $v ) {
                 $slug = self::slug( $v );
         ?>
             <fieldset class="<?php echo self::$pr ?>wrap">
-                <legend><?php echo $v ?></legend>
+                <legend><?php _e( $v, 'fcpcr' ) ?></legend>
                 <div class="<?php echo self::$pr ?>radio_bar">
                 <?php for ( $i = self::$stars; $i > 0; $i-- ) { ?>
                     <input type="radio"
@@ -285,7 +295,7 @@ class FCP_Comment_Rate {
         
         ?>
         <div class="<?php echo self::$pr ?>wrap">
-            <div class="<?php echo self::$pr ?>headline"><?php echo $title ?></div>
+            <div class="<?php echo self::$pr ?>headline"><?php _e( $title, 'fcpcr' ) ?></div>
             <?php self::stars_layout( $stars ) ?>
         </div>
         <?php
@@ -437,7 +447,7 @@ class FCP_Comment_Rate {
             ?>
             <div class="<?php echo self::$pr ?>nomination">
                 <div class="<?php echo self::$pr ?>wrap">
-                    <div class="<?php echo self::$pr ?>headline"><?php echo $v ?></div>
+                    <div class="<?php echo self::$pr ?>headline"><?php _e( $v, 'fcpcr' ) ?></div>
                     <?php self::stars_layout( $ratings[ $slug ] ) ?>
                 </div>
             </div>
@@ -622,7 +632,7 @@ class FCP_Comment_Rate {
 
         ?>
         <div class="comment-rating-headline with-line">
-            Reviews (<?php echo get_comments_number() ?>)
+            <?php _e( 'Reviews', 'fcpcr' ) ?> (<?php echo get_comments_number() ?>)
         </div>
         <div class="comment-rating-total">
         <?php FCP_Comment_Rate::stars_layout( $ratings['__total'] ) ?>

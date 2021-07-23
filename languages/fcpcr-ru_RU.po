@@ -1,0 +1,59 @@
+#. 
+msgid "Your review is awaiting moderation."
+msgstr "Ваши отзыв и рейтинг будут опубликованы после модерации."
+
+#. Leave a reply to THE COMMENT AUTHOR'S NAME
+msgid "Leave a reply to"
+msgstr "Ответить на отзыв автора"
+
+#. 
+msgid "Leave a Review"
+msgstr "Оставить отзыв"
+
+#. the author's or admin's reply to a review
+msgid "Your Reply"
+msgstr "Ваш ответ"
+
+#. 
+msgid "Your Review"
+msgstr "Ваш отзыв"
+
+#. submit button title
+msgid "Reply"
+msgstr "Ответить"
+
+#. submit button title
+msgid "Post Review"
+msgstr "Разместить отзыв"
+
+#. imperative verb for the headline
+msgid "Rate"
+msgstr "Оценить"
+
+#. 
+msgid "Reviews"
+msgstr "Отзывы"
+
+#. 
+msgid "Rating"
+msgstr "Рейтинг"
+
+#. 
+msgid "Reply to this review"
+msgstr "Ответить на отзыв"
+
+#. Conditional
+msgid "Competence"
+msgstr "Компетентность / профессионализм"
+
+#. Conditional
+msgid "Friendliness"
+msgstr "Приятное отношение"
+
+#. Conditional
+msgid "Wait time for an appointment"
+msgstr "Время ожидания приема"
+
+#. Conditional
+msgid "Interior"
+msgstr "Комфортность помещения"
