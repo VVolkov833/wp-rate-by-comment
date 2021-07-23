@@ -30,11 +30,9 @@ class FCP_Comment_Rate {
 
         $this->plugin_setup();
 
-        //add_filter( 'allow_empty_comment', '__return_true' ); // ++ add post type limitations to this too ++ custom
-        //add_filter( 'preprocess_comment', [$this, 'filter_comment'] );
-        //add_action( 'comment_post', [$this, 'form_fields_save'] ); // ++ add post type limitations to this too
+        //add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f
 
-        add_action( 'wp', function() { // to filter post types
+        add_action( 'wp', function() { // to filter post types, only front-end
 
             global $post;
             if ( !in_array( $post->post_type, self::$types ) ) { return; }
@@ -88,9 +86,10 @@ class FCP_Comment_Rate {
                     return true;
                 }
                 return false;
+                // ++change the message to ~only author and admin can reply the review
             }, 10, 2 );
 
-            //add_filter( 'comment_text', [$this, 'comment_rating_draw'], 30 );
+            add_filter( 'comment_text', [$this, 'comment_rating_draw'], 30 ); // 30 - after the_content filters
 
             // styling the stars
             add_action( 'wp_enqueue_scripts', [$this, 'styles_scripts_add'] );
@@ -98,18 +97,26 @@ class FCP_Comment_Rate {
 
         });
 
-        // stop storing user data ++ try to move to wp ++ can remove it manually on save?
+        // saving
+        //add_filter( 'preprocess_comment', [$this, 'filter_comment'] ); // ++ not sure it is needed
+        add_action( 'comment_post', [$this, 'form_fields_save'] ); // ++ add post type limitations to this too
+        
+        /*
+        // stop storing user data, but it might be needed for the spam fighting
         add_filter( 'pre_comment_user_ip', function($a) { return ''; } );
         add_filter( 'pre_comment_user_agent', function($a) { return ''; } );
         add_filter( 'pre_comment_author_url', function($a) { return ''; } );
+        //*/
+
         
-        // limit the permissions ++move the following to costom post type limitation
+        // limit the permissions ++move the following to custom post type limitation
         // hide the links in admin
         add_action( 'bulk_actions-edit-comments', [$this, 'filter_comments_actions_view'] );
         add_action( 'comment_row_actions', [$this, 'filter_comments_actions_view'] );
         
-        // check permissions on comments' actions
+        // check permissions on comments' actions ++make sure it doesn't interfere with other post options
         add_action( 'admin_init', [$this, 'filter_comments_actions'] );
+
     }
 
     public function comment_print( $comment, $args, $depth ) {
@@ -308,7 +315,7 @@ class FCP_Comment_Rate {
 
     public function form_fields_save($comment_id) {
 
-        if ( self::is_replying() ) {
+        if ( self::is_replying() ) { // stars are only for the reviews (1st lvl)
             return;
         }
 
@@ -552,7 +559,7 @@ class FCP_Comment_Rate {
         }
         return false;
     }
-    public static function can_post_a_reply() { // the post author or an admin
+    public static function can_post_a_reply() { // the post author or an admin ++can remove
         if (
             self::is_replying() &&
             current_user_can( 'edit_post' )
@@ -570,9 +577,13 @@ class FCP_Comment_Rate {
             global $comment;
         }
         
+        // don't interfere other post types comments rules
+        $post_type = get_post_type( $comment->comment_post_ID );
+        if ( !in_array( $post_type, self::$types ) ) { return true; }
+        
         if (
             !$comment->comment_parent && // only 2 lvls
-            current_user_can( 'edit_post', $comment->comment_post_ID )
+            current_user_can( 'edit_post', $comment->comment_post_ID ) // ++might not be needed here
         ) {
             return true;
         }
@@ -590,9 +601,13 @@ class FCP_Comment_Rate {
             global $comment;
         }
 
+        // don't interfere other post types comments rules
+        $post_type = get_post_type( $comment->comment_post_ID );
+        if ( !in_array( $post_type, self::$types ) ) { return true; }
+
         if (
             (
-                current_user_can( 'edit_comment', $comment->comment_ID ) &&
+                current_user_can( 'edit_comment', $comment->comment_ID ) && // ++might not be needed here
                 $comment->user_id == get_current_user_id()
             ) ||
             current_user_can( 'administrator' )
