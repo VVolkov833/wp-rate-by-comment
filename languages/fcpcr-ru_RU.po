@@ -43,17 +43,17 @@ msgid "Reply to this review"
 msgstr "Ответить на отзыв"
 
 #. Conditional
-msgid "Competence"
-msgstr "Компетентность / профессионализм"
+msgid "Expertise"
+msgstr "Компетентность"
 
 #. Conditional
-msgid "Friendliness"
-msgstr "Приятное отношение"
+msgid "Kindness"
+msgstr "Вежливость"
 
 #. Conditional
-msgid "Wait time for an appointment"
+msgid "Waiting time for an appointment"
 msgstr "Время ожидания приема"
 
 #. Conditional
-msgid "Interior"
-msgstr "Комфортность помещения"
+msgid "Facilities"
+msgstr "Оснащение и интерьер"

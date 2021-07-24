@@ -1,59 +1,59 @@
 #. 
 msgid "Your review is awaiting moderation."
-msgstr ""
+msgstr "Deine Bewertung wird geprüft."
 
 #. Leave a reply to THE COMMENT AUTHOR'S NAME
 msgid "Leave a reply to"
-msgstr ""
+msgstr "Hinterlasse eine Antwort an"
 
 #. 
 msgid "Leave a Review"
-msgstr ""
+msgstr "Hinterlasse eine Bewertung"
 
 #. the author's or admin's reply to a review
 msgid "Your Reply"
-msgstr ""
+msgstr "Deine Antwort"
 
 #. 
 msgid "Your Review"
-msgstr ""
+msgstr "Deine Bewertung"
 
 #. submit button title
 msgid "Reply"
-msgstr ""
+msgstr "Antworten"
 
 #. submit button title
 msgid "Post Review"
-msgstr ""
+msgstr "Bewertung veröffentlichen"
 
 #. imperative verb for the headline
 msgid "Rate"
-msgstr ""
+msgstr "Bewerte"
 
 #. 
 msgid "Reviews"
-msgstr ""
+msgstr "Bewertungen"
 
 #. 
 msgid "Rating"
-msgstr ""
+msgstr "Bewertung"
 
 #. 
 msgid "Reply to this review"
-msgstr ""
+msgstr "Antworte auf diese Bewertung"
 
 #. Conditional
-msgid "Competence"
+msgid "Expertise"
 msgstr "Kompetenz"
 
 #. Conditional
-msgid "Friendliness"
+msgid "Kindness"
 msgstr "Freundlichkeit"
 
 #. Conditional
-msgid "Wait time for an appointment"
-msgstr "Warte zeit für Termin"
+msgid "Waiting time for an appointment"
+msgstr "Wartezeit für Termin"
 
 #. Conditional
-msgid "Interior"
+msgid "Facilities"
 msgstr "Räumlichkeit"
