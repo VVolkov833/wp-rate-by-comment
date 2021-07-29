@@ -16,7 +16,7 @@ class FCP_Comment_Rate {
 
 	public static $dev = true, // developers mode, avoid caching js & css
                   $pr = 'cr_', // prefix (db, css)
-                  $types = ['clinic'], // post types to support
+                  $types = ['clinic', 'doctor'], // post types to support
                   $ratings = ['Expertise', 'Kindness', 'Waiting time for an appointment', 'Facilities'], // nominations
                   //$weights = [8, 3.2, 2.4, 2], // any size, but proportionally correct in relation to each other
                   $stars = 5, // max amount of stars
