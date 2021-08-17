@@ -457,7 +457,7 @@ class FCP_Comment_Rate {
 
     public static function stars_layout($stars = 0) {
 
-        if ( !$stars) { return; }
+        //if ( !$stars) { return; }
     
         $stars = $stars > self::$stars ? self::$stars : $stars;
         $width = round( $stars / self::$stars * 100, 5 );
@@ -639,6 +639,22 @@ class FCP_Comment_Rate {
         <?php echo $ratings['__total'] ? round( $ratings['__total'], 1 ) : '' ?>
         </div>
         <?php FCP_Comment_Rate::nominations_layout( $ratings ) ?>
+        <?php
+    }
+    
+    public static function print_rating_summary_short() {
+        $ratings = self::ratings_count();
+
+        ?>
+        <div class="comment-rating-total">
+            <?php self::stars_layout( $ratings['__total'] ) ?>
+            <span>
+                <?php echo $ratings['__total'] ?
+                    round( $ratings['__total'], 1 ) :
+                    __( 'Not rated yet', 'fcpcr' )
+                ?>
+            </span>
+        </div>
         <?php
     }
 
