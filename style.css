@@ -82,6 +82,8 @@
     -webkit-mask-repeat:repeat-x;
     mask-position:0 0;
     -webkit-mask-position:0 0;
+    mask-size:auto 100%;
+    -webkit-mask-size:auto 100%;
 }
 .cr_rating_bar::before {
     content:'';

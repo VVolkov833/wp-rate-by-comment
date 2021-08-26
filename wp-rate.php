@@ -636,7 +636,7 @@ class FCP_Comment_Rate {
         </div>
         <div class="comment-rating-total">
         <?php FCP_Comment_Rate::stars_layout( $ratings['__total'] ) ?>
-        <?php echo $ratings['__total'] ? round( $ratings['__total'], 1 ) : '' ?>
+        <?php echo $ratings['__total'] ? number_format( round( $ratings['__total'], 1 ), 1, ',', '' ) : '' ?>
         </div>
         <?php FCP_Comment_Rate::nominations_layout( $ratings ) ?>
         <?php
@@ -650,7 +650,7 @@ class FCP_Comment_Rate {
             <?php self::stars_layout( $ratings['__total'] ) ?>
             <span>
                 <?php echo $ratings['__total'] ?
-                    round( $ratings['__total'], 1 ) :
+                    number_format( round( $ratings['__total'], 1 ), 1, ',', '' ) :
                     __( 'Not rated yet', 'fcpcr' )
                 ?>
             </span>
