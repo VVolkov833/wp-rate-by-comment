@@ -17,6 +17,7 @@ class FCP_Comment_Rate {
 	public static $dev = true, // developers mode, avoid caching js & css
                   $pr = 'cr_', // prefix (db, css)
                   $types = ['clinic', 'doctor'], // post types to support
+                  $archive = true, // support the post types' archives for printing purposes
                   $ratings = ['Expertise', 'Kindness', 'Waiting time for an appointment', 'Facilities'], // nominations
                   //$weights = [8, 3.2, 2.4, 2], // any size, but proportionally correct in relation to each other
                   $stars = 5, // max amount of stars
@@ -628,17 +629,17 @@ class FCP_Comment_Rate {
     }
     
     public static function print_rating_summary() {
-        $ratings = FCP_Comment_Rate::ratings_count();
+        $ratings = self::ratings_count();
 
         ?>
         <div class="comment-rating-headline with-line">
             <?php _e( 'Reviews', 'fcpcr' ) ?> (<?php echo get_comments_number() ?>)
         </div>
         <div class="comment-rating-total">
-        <?php FCP_Comment_Rate::stars_layout( $ratings['__total'] ) ?>
+        <?php self::stars_layout( $ratings['__total'] ) ?>
         <?php echo $ratings['__total'] ? number_format( round( $ratings['__total'], 1 ), 1, ',', '' ) : '' ?>
         </div>
-        <?php FCP_Comment_Rate::nominations_layout( $ratings ) ?>
+        <?php self::nominations_layout( $ratings ) ?>
         <?php
     }
     
@@ -656,6 +657,12 @@ class FCP_Comment_Rate {
             </span>
         </div>
         <?php
+    }
+    
+    public static function print_stars_total() {
+        $total = self::ratings_count()['__total'];
+        if ( !$total ) { return; }
+        self::stars_layout( $total ); // ++just add option to hide if zero
     }
 
 }
