@@ -88,7 +88,8 @@ class FCP_Comment_Rate {
             add_filter( 'comments_open', function ( $open, $post_id ) {
                 // only the page author & admin can reply the reviews
                 // ++add the $_POST filter!!!
-                if ( !FCP_Comment_Rate::is_replying() || FCP_Comment_Rate::can_post_a_reply() ) {
+                $post = get_post( $post_id );
+                if ( ( !FCP_Comment_Rate::is_replying() || FCP_Comment_Rate::can_post_a_reply() ) && $post->comment_status === 'open' ) {
                     return true;
                 }
                 return false;
