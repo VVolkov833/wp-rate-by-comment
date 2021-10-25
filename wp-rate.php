@@ -99,24 +99,16 @@ class FCP_Comment_Rate {
 
             add_filter( 'comment_text', [$this, 'comment_rating_draw'], 30 ); // 30 - after the_content filters
 
-            // styling the stars
-            add_action( 'wp_enqueue_scripts', [$this, 'styles_scripts_add'] );
-            add_action( 'wp_footer', [$this, 'styles_dynamic_print'] );
-
         });
+
+        // styling the stars // ++it was higher, but I started to use it with the shortcode - try to load conditionally
+        add_action( 'wp_enqueue_scripts', [$this, 'styles_scripts_add'] );
+        add_action( 'wp_footer', [$this, 'styles_dynamic_print'] );
 
         // saving
         //add_filter( 'preprocess_comment', [$this, 'filter_comment'] ); // ++ not sure it is needed
         add_action( 'comment_post', [$this, 'form_fields_save'] ); // ++ add post type limitations to this too
-        
-        /*
-        // stop storing user data, but it might be needed for the spam fighting
-        add_filter( 'pre_comment_user_ip', function($a) { return ''; } );
-        add_filter( 'pre_comment_user_agent', function($a) { return ''; } );
-        add_filter( 'pre_comment_author_url', function($a) { return ''; } );
-        //*/
 
-        
         // limit the permissions ++move the following to custom post type limitation
         // hide the links in admin
         add_action( 'bulk_actions-edit-comments', [$this, 'filter_comments_actions_view'] );
@@ -126,11 +118,17 @@ class FCP_Comment_Rate {
         add_action( 'admin_init', [$this, 'filter_comments_actions'] );
         
         // recount the total rating of a post on the following actions
-        /* ++use different functions to retreive the id to reset, then use same private function to reset
-        add_action( 'admin_init', [$this, 'reset_total_score'] ); // only the comments actions
-        add_action( 'transition_comment_status', [$this, 'reset_total_score'] );
-        add_action( 'comment_post', [$this, 'reset_total_score'] );
-        //*/
+        add_action( 'trashed_comment', [$this, 'reset_total_score'] );
+        add_action( 'untrashed_comment', [$this, 'reset_total_score'] );
+        add_action( 'spammed_comment', [$this, 'reset_total_score'] );
+        add_action( 'unspammed_comment', [$this, 'reset_total_score'] );
+
+        add_action( 'comment_unapproved_to_approved', [$this, 'reset_total_score'] );
+        add_action( 'comment_approved_to_unapproved', [$this, 'reset_total_score'] );
+        add_action( 'comment_approved_to_delete', [$this, 'reset_total_score'] );
+        add_action( 'comment_delete_to_approved', [$this, 'reset_total_score'] );
+
+        add_action( 'comment_post', [$this, 'reset_total_score'] ); // added for logged-in-s
 
         // add translation languages
         add_action( 'plugins_loaded', function() {
@@ -139,27 +137,13 @@ class FCP_Comment_Rate {
         
     }
 
-    public function reset_total_score() {
-        global $wp_query;
-        $id = $wp_query->post->ID;
-    
-        if ( isset( $_GET['action'] ) ) {
-            error_log( 'any action = ' . $_GET['action'] );
-            $actions = [
-                'approvecomment',
-                'unapprovecomment',
-                'spamcomment',
-                'unspamcomment',
-                'trashcomment'
-            ];
-            
-            if ( !in_array( $_GET['action'], $actions ) ) {
-                return;
-            }
-            error_log( 'approved action = ' . $_GET['action'] );
-        }
-        
-        error_log( 'reset id = ' . $id );
+    public function reset_total_score($comment_id) {
+
+        $comment = get_comment( $comment_id ); 
+        $post_id = $comment->comment_post_ID;
+
+        update_post_meta( $post_id, 'cr_total_wtd', self::ratings_count( $post_id )['__total'] );
+
     }
     
     
@@ -431,7 +415,7 @@ class FCP_Comment_Rate {
         return $actions;
     }
 
-    public function filter_comments_actions() { // ++ajax actions are still intact :( ++ try using transition_comment_status hook maybe
+    public function filter_comments_actions() { // ++ajax actions are still intact :( ++ try using transition_comment_status hook maybe or the hooks, which are used for function reset_total_score()!!
         if ( !isset( $_GET['action'] ) && !isset( $_POST['action'] ) ) { return; }
 
         if ( !self::can_reply() ) {
