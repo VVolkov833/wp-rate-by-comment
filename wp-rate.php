@@ -88,6 +88,7 @@ class FCP_Comment_Rate {
             add_filter( 'comments_open', function ( $open, $post_id ) {
                 // only the page author & admin can reply the reviews
                 // ++add the $_POST filter!!!
+                // ++add post types to not interfere other types
                 $post = get_post( $post_id );
                 if ( ( !FCP_Comment_Rate::is_replying() || FCP_Comment_Rate::can_post_a_reply() ) && $post->comment_status === 'open' ) {
                     return true;
@@ -123,6 +124,13 @@ class FCP_Comment_Rate {
         
         // check permissions on comments' actions ++make sure it doesn't interfere with other post options
         add_action( 'admin_init', [$this, 'filter_comments_actions'] );
+        
+        // recount the total rating of a post on the following actions
+        /* ++use different functions to retreive the id to reset, then use same private function to reset
+        add_action( 'admin_init', [$this, 'reset_total_score'] ); // only the comments actions
+        add_action( 'transition_comment_status', [$this, 'reset_total_score'] );
+        add_action( 'comment_post', [$this, 'reset_total_score'] );
+        //*/
 
         // add translation languages
         add_action( 'plugins_loaded', function() {
@@ -131,6 +139,30 @@ class FCP_Comment_Rate {
         
     }
 
+    public function reset_total_score() {
+        global $wp_query;
+        $id = $wp_query->post->ID;
+    
+        if ( isset( $_GET['action'] ) ) {
+            error_log( 'any action = ' . $_GET['action'] );
+            $actions = [
+                'approvecomment',
+                'unapprovecomment',
+                'spamcomment',
+                'unspamcomment',
+                'trashcomment'
+            ];
+            
+            if ( !in_array( $_GET['action'], $actions ) ) {
+                return;
+            }
+            error_log( 'approved action = ' . $_GET['action'] );
+        }
+        
+        error_log( 'reset id = ' . $id );
+    }
+    
+    
     public function comment_print( $comment, $args, $depth ) {
         if ( 'div' === $args['style'] ) {
             $tag       = 'div';
@@ -399,7 +431,7 @@ class FCP_Comment_Rate {
         return $actions;
     }
 
-    public function filter_comments_actions() { // ++ajax actions are still intact :(
+    public function filter_comments_actions() { // ++ajax actions are still intact :( ++ try using transition_comment_status hook maybe
         if ( !isset( $_GET['action'] ) && !isset( $_POST['action'] ) ) { return; }
 
         if ( !self::can_reply() ) {
@@ -437,6 +469,8 @@ class FCP_Comment_Rate {
             }
         }
     }
+    
+
 
 //-----__--___-__--_______STATICS to print in templates -------___--_______-
 
