@@ -132,7 +132,7 @@ class FCP_Comment_Rate {
 
         // add translation languages
         add_action( 'plugins_loaded', function() {
-            load_plugin_textdomain( 'fcpcr', false, dirname( plugin_basename( __FILE__ ) ) . '/languages/' );
+            load_plugin_textdomain( 'fcpcr', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
         });
         
     }
