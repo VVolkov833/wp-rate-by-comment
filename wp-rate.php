@@ -560,6 +560,7 @@ class FCP_Comment_Rate {
 
         $result = $a['per_nomination_wtd'];
         $result['__total'] = $a['total_wtd'];
+        $result['__count'] = max( array_values( $a['not_zero_stars_amo'] ) );
 
         foreach( $result as &$v ) {
             $v = round( $v, 5 );
@@ -662,18 +663,18 @@ class FCP_Comment_Rate {
         <?php
     }
     
-    public static function print_rating_summary_short() {
+    public static function print_rating_summary_short() { // add separate function with and without schema
         $ratings = self::ratings_count();
 
         ?>
-        <div class="comment-rating-total">
+        <div class="comment-rating-total" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
             <?php self::stars_layout( $ratings['__total'] ) ?>
-            <span>
-                <?php echo $ratings['__total'] ?
-                    number_format( round( $ratings['__total'], 1 ), 1, ',', '' ) :
-                    __( 'Not rated yet', 'fcpcr' )
-                ?>
-            </span>
+            <?php
+            echo $ratings['__total'] ?
+            '<span itemprop="ratingValue">'.number_format( round( $ratings['__total'], 1 ), 1, ',', '' ).'</span>' :
+            '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>';
+            ?>
+            <meta itemprop="ratingCount" content="<?php echo $ratings['__count'] ?>">
         </div>
         <?php
     }
