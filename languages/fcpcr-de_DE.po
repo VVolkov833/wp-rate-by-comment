@@ -1,9 +1,22 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"POT-Creation-Date: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: de_DE\n"
+"X-Generator: Poedit 3.0\n"
+
 msgid "Your review is awaiting moderation."
-msgstr "Deine Bewertung wird geprüft."
+msgstr "Deine Bewertung wird vor der Veröffentlichung geprüft."
 
 #. Leave a reply to THE COMMENT AUTHOR'S NAME
 msgid "Leave a reply to"
-msgstr "Hinterlasse eine Antwort an"
+msgstr "Hinterlasse eine Kommentar zu"
 
 msgid "Leave a Review"
 msgstr "Hinterlasse eine Bewertung"
@@ -25,11 +38,11 @@ msgstr "Bewertung veröffentlichen"
 
 #. imperative verb for the headline
 msgid "Rate"
-msgstr "Bewerte"
+msgstr "Bewerten"
 
-#. this one is not used in the plugin directly, gotta be short
+#. this one is not used in the plugin directly
 msgid "Review and Rate"
-msgstr "Bewerte"
+msgstr "Bewerten"
 
 msgid "Reviews"
 msgstr "Bewertungen"
