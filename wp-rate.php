@@ -608,6 +608,8 @@ class FCP_Comment_Rate {
             global $comment;
         }
         
+        if ( !isset( $comment->comment_post_ID ) ) { return false; }
+        
         // don't interfere other post types comments rules
         $post_type = get_post_type( $comment->comment_post_ID );
         if ( !in_array( $post_type, self::$types ) ) { return true; }
@@ -631,6 +633,8 @@ class FCP_Comment_Rate {
         } else { // filter the front-end inside the comments loop
             global $comment;
         }
+        
+        if ( !$comment || !is_object( $comment ) ) { return false; }
 
         // don't interfere other post types comments rules
         $post_type = get_post_type( $comment->comment_post_ID );
