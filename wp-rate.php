@@ -17,7 +17,8 @@ class FCP_Comment_Rate {
 	public static $dev = true, // developers mode, avoid caching js & css
                   $pr = 'cr_', // prefix (db, css)
                   $types = ['clinic', 'doctor'], // post types to support
-                  $archive = true, // support the post types' archives for printing purposes
+                  $archive = true, // support the post types' archives for printing purposes // ++--??
+                  $schema = true, // support the schema
                   $ratings = ['Expertise', 'Kindness', 'Waiting time for an appointment', 'Facilities'], // nominations
                   //$weights = [8, 3.2, 2.4, 2], // any size, but proportionally correct in relation to each other
                   $stars = 5, // max amount of stars
@@ -242,11 +243,15 @@ class FCP_Comment_Rate {
         
         // customize the form defaults
         add_filter( 'comment_form_defaults', function($d) {
+
             // modify the form printing function comment_form()
             $d['comment_notes_before'] = '';
             $d['logged_in_as'] = '';
 
             $d['title_reply'] = FCP_Comment_Rate::is_replying() ? __( 'Leave a reply to', 'fcpcr' ) : __( 'Leave a Review', 'fcpcr' );
+            
+            $d['title_reply_before'] = '<h2 id="reply-title" class="comment-reply-title">';
+            $d['title_reply_after'] = '</h2>';
 
             $d['fields']['author'] = '
                 <p class="comment-form-author">
@@ -285,7 +290,6 @@ class FCP_Comment_Rate {
     public function form_fields_layout($a) {
         ?>
         <div class="<?php echo self::$pr ?>fields wp-block-column" style="flex-basis:33.33%">
-        <h3 class="with-line"><?php _e( 'Rate', 'fcpcr' ) ?></h3>
         <?php
             foreach ( self::$ratings as $v ) {
                 $slug = self::slug( $v );
@@ -667,9 +671,33 @@ class FCP_Comment_Rate {
         <?php
     }
     
-    public static function print_rating_summary_short() { // add separate function with and without schema
-        $ratings = self::ratings_count();
+    public static function print_rating_summary_short() {
 
+        $ratings = self::ratings_count();
+        if ( !$ratings ) { return; }
+
+        if ( $ratings['__total'] && self::$schema ) {
+            self::print_rating_summary_short_schema($ratings);
+            return;
+        }
+
+        self::print_rating_summary_short_schema($ratings);
+    }
+    
+    private static function print_rating_summary_short_noschema($ratings) {
+        ?>
+        <div class="comment-rating-total">
+            <?php self::stars_layout( $ratings['__total'] ) ?>
+            <?php
+            echo $ratings['__total'] ?
+            '<span>'.number_format( round( $ratings['__total'], 1 ), 1, ',', '' ).'</span>' :
+            '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>';
+            ?>
+        </div>
+        <?php
+    }
+    
+    private static function print_rating_summary_short_schema($ratings) {
         ?>
         <div class="comment-rating-total" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
             <?php self::stars_layout( $ratings['__total'] ) ?>
