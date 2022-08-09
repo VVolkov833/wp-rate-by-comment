@@ -1,0 +1,46 @@
+/* align the nominations */
+.cr_comment {
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    margin:25px 0 30px;
+}
+
+.cr_comment .cr_wrap {
+    flex:1;
+    margin:0 10px;
+}
+.cr_comment .cr_wrap:first-child {
+    margin-left:0;
+}
+.cr_comment .cr_wrap:last-child {
+    margin-right:0;
+}
+
+.cr_comment .cr_headline {
+    margin-bottom:10px;
+    font-size:16px;
+    font-weight:700;
+    text-transform:uppercase;
+    color:var(--h-color);
+}
+.cr_comment .cr_stars_bar {
+    max-width:100px;
+}
+
+@media (max-width:500px), (min-width:600px) and (max-width:991px) {
+    .cr_comment {
+        flex-wrap:wrap;
+    }
+    .cr_comment .cr_wrap {
+        flex:auto;
+        width:calc( 50% - 10px );
+        margin-top:10px;
+    }
+    .cr_comment .cr_wrap:nth-child(odd) {
+        margin-left:0;
+    }
+    .cr_comment .cr_wrap:nth-child(even) {
+        margin-right:0;
+    }
+}

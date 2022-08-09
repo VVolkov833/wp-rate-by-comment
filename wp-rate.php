@@ -2,7 +2,7 @@
 /*
 Plugin Name: Comment and Rate
 Description: Adds custom rating fields to a particular post type's comments
-Version: 0.1.0
+Version: 0.1.1
 Requires at least: 4.7
 Requires PHP: 5.2.4
 Author: Firmcatalyst, Vadim Volkov
@@ -14,110 +14,101 @@ defined( 'ABSPATH' ) || exit;
 
 class FCP_Comment_Rate {
 
-	public static $dev = true, // developers mode, avoid caching js & css
-                  $pr = 'cr_', // prefix (db, css)
-                  $types = ['clinic', 'doctor'], // post types to support
-                  $archive = true, // support the post types' archives for printing purposes // ++--??
-                  $schema = true, // support the schema
-                  $ratings = ['Expertise', 'Kindness', 'Waiting time for an appointment', 'Facilities'], // nominations
-                  //$weights = [8, 3.2, 2.4, 2], // any size, but proportionally correct in relation to each other
-                  $stars = 5, // max amount of stars
-                  $star_proportions = 2 / 3; // star width (square) / image width (w>h)
-	
-	private function plugin_setup() {
+    private static  $dev = true, // developers mode, avoid caching js & css
+                    $pr = 'cr_', // prefix (db, css)
+                    $types = ['clinic', 'doctor'], // post types
+                    $schema = true, // support the schema
+                    $competencies = ['Expertise', 'Kindness', 'Waiting time for an appointment', 'Facilities'],
+                    //$weights = [8, 3.2, 2.4, 2], // $competencies' weights
+                    $stars = 5, // max amount of stars
+                    $proportions = 2 / 3; // star image h / w
 
-		$this->self_url  = plugins_url( '/', __FILE__ );
-		$this->self_path = plugin_dir_path( __FILE__ );
-
-		$this->css_ver = '0.1.0' . ( self::$dev ? '.'.time() : '' );
-		$this->js_ver = '0.0.1' . ( self::$dev ? '.'.time() : '' );
-	}
+    public static function ver() {
+        static $ver;
+        if ( $ver ) { return $ver; }
+        $ver = get_file_data( __FILE__, [ 'ver' => 'Version' ] )[ 'ver' ] . ( self::$dev ? time() : '' );
+        return $ver;
+    }
 
     public function __construct() {
 
-        $this->plugin_setup();
+        // add translation languages
+        add_action( 'plugins_loaded', function() {
+            load_plugin_textdomain( 'fcpcr', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+        });
 
-        //add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f
 
-        add_action( 'wp', function() { // to filter post types, only front-end
-
+        // ************* printing conditions
+        add_action( 'wp', function() {
+        
+            if ( is_admin() ) { return; }
             global $post;
             if ( !in_array( $post->post_type, self::$types ) ) { return; }
 
-            // only the review can have the rating
-            if ( !self::is_replying() ) {
 
-                // wrap the main fields to fit the rating in
-                add_action( 'comment_form_top', function() {
-                    echo '<div class="' . self::$pr . 'init-fields wp-block-column">';
-                });
-                add_action( 'comment_form', function() {
-                    echo '</div>';
-                });
-                add_filter( 'comment_form_defaults', function($d) {
-                    $d['class_form'] .= ' wp-block-columns';
-                    return $d;
-                });
-
-                // draw the custom fields
-                add_action( 'comment_form', [$this, 'form_fields_layout'] );
-
+            // forms modifying
+            if ( comments_open() ) { // just to not run those in common circumstances - the printing is filtered anyways
+                $this->form_layout_change();
+                if ( !self::is_replying() ) {
+                    $this->draw_main_fields_wrapper();
+                    add_action( 'comment_form', [$this, 'draw_rating_fields'] );
+                }
             }
-            
-            // reply form right after the comment
-            // wp_enqueue_script( 'comment-reply' ); // ++ do a custom variant, as this just moves the form with stars
 
-            $this->form_view_fixes();
+            // forms printing conditions
+            add_filter( 'comments_open', function ( $open, $post_id ) { // notice - only printing is effected
+                if ( !$open ) { return false; }
+                //if ( !in_array( get_post( $post_id )->post_type, self::$types ) ) { return false; } //^
+                if ( self::is_replying() && !self::can_post_a_reply() ) { return false; }
+                return true;
+            }, 10, 2 );
 
-            // modify the comments printing function wp_list_comments()
+            // comments printing modify & default settings for wp_list_comments()
             add_filter( 'wp_list_comments_args', function($a) {
                 $new_args = [
                     'avatar_size' => 80,
-                    'max_depth' => 2,
-                    'style'       => 'div',
-                    'callback' => [$this, 'comment_print'],
-                    'short_ping'  => true,
-                    'reply_text'  => __( 'Reply to this review', 'fcpcr' ),
+                    'max_depth' => 3,
+                    'callback' => [$this, 'comment_print'], // the reply & edit links are printed here too
+                    //'short_ping' => true, // the simplest format?
+                    'reply_text' => __( 'Reply to this review', 'fcpcr' ),
                     'reverse_top_level' => true,
                     'reverse_children' => true
                 ];
-                $a = array_merge( $a, $new_args );
-                return $a;
+                return array_merge( $a, $new_args );
             });
 
-            // hide the form on conditions
-            add_filter( 'comments_open', function ( $open, $post_id ) {
-                // only the page author & admin can reply the reviews
-                // ++add the $_POST filter!!!
-                // ++add post types to not interfere other types
-                $post = get_post( $post_id );
-                if ( ( !FCP_Comment_Rate::is_replying() || FCP_Comment_Rate::can_post_a_reply() ) && $post->comment_status === 'open' ) {
-                    return true;
-                }
-                return false;
-                // ++change the message to ~only author and admin can reply the review
-            }, 10, 2 );
 
-            add_filter( 'comment_text', [$this, 'comment_rating_draw'], 30 ); // 30 - after the_content filters
+            // add the rating values to the comment text
+            add_filter( 'comment_text', [$this, 'comment_rating_draw'] );
+
+            // load styles
+            if ( comments_open() ) {
+                add_action( 'wp_enqueue_scripts', [$this, 'style_form'] );
+            }
+            if ( get_comments_number() ) {
+                add_action( 'wp_enqueue_scripts', [$this, 'style_comments'] );
+            }
+            add_action( 'wp_head', [$this, 'style_sizes'] );
 
         });
 
-        // styling the stars // ++it was higher, but I started to use it with the shortcode - try to load conditionally
-        add_action( 'wp_enqueue_scripts', [$this, 'styles_scripts_add'] );
-        add_action( 'wp_footer', [$this, 'styles_dynamic_print'] );
 
-        // saving
-        //add_filter( 'preprocess_comment', [$this, 'filter_comment'] ); // ++ not sure it is needed
-        add_action( 'comment_post', [$this, 'form_fields_save'] ); // ++ add post type limitations to this too
+        // ************* wp-admin printing conditions
 
-        // limit the permissions ++move the following to custom post type limitation
-        // hide the links in admin
+        // hide the links in admin // post-type filter is in can_reply & can_edit
         add_action( 'bulk_actions-edit-comments', [$this, 'filter_comments_actions_view'] );
         add_action( 'comment_row_actions', [$this, 'filter_comments_actions_view'] );
-        
-        // check permissions on comments' actions ++make sure it doesn't interfere with other post options
+
+        // filter displaying the editing screens
         add_action( 'admin_init', [$this, 'filter_comments_actions'] );
         
+
+        // ************* operations with comments
+
+        // saving
+        //add_filter( 'preprocess_comment', [$this, 'filter_comment'] ); // add if filter for the content is needed
+        add_action( 'comment_post', [$this, 'form_fields_save'] ); // ++ add post type limitations to this too
+
         // recount the total rating of a post on the following actions
         add_action( 'trashed_comment', [$this, 'reset_total_score'] );
         add_action( 'untrashed_comment', [$this, 'reset_total_score'] );
@@ -131,12 +122,8 @@ class FCP_Comment_Rate {
 
         add_action( 'comment_post', [$this, 'reset_total_score'] ); // added for logged-in-s
 
-        // add translation languages
-        add_action( 'plugins_loaded', function() {
-            load_plugin_textdomain( 'fcpcr', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
-        });
-        
     }
+
 
     public function reset_total_score($comment_id) {
 
@@ -146,280 +133,37 @@ class FCP_Comment_Rate {
         update_post_meta( $post_id, 'cr_total_wtd', self::ratings_count( $post_id )['__total'] );
 
     }
-    
-    
-    public function comment_print( $comment, $args, $depth ) {
-        if ( 'div' === $args['style'] ) {
-            $tag       = 'div';
-            $add_below = 'comment';
-        } else {
-            $tag       = 'li';
-            $add_below = 'div-comment';
-        }
 
-        $classes = ' ' . comment_class( empty( $args['has_children'] ) ? '' : 'parent', null, null, false );
-        ?>
-
-    <<?php echo $tag, $classes; ?> id="comment-<?php comment_ID() ?>">
-
-        <div class="comment-author">
-            <?php
-
-            if ( $args['avatar_size'] != 0 ) {
-                echo get_avatar( $comment, $args['avatar_size'] );
-            }
-
-            echo get_comment_author();
-
-            ?>
-        </div>
-
-        <?php if ( $comment->comment_approved == '0' ) { ?>
-            <em class="comment-awaiting-moderation">
-                <?php _e( 'Your review is awaiting moderation.', 'fcpcr' ) ?>
-            </em><br/>
-        <?php } ?>
-
-        <div class="comment-content">
-            <?php comment_text() ?>
-        </div>
-
-        <div class="comment-more">
-            <?php
-            if ( FCP_Comment_Rate::can_reply() ) {
-                comment_reply_link(
-                    array_merge(
-                        $args,
-                        [
-                            'add_below' => $add_below,
-                            'depth'     => $depth,
-                            'max_depth' => $args['max_depth']
-                        ]
-                    )
-                );
-            }
-
-            if ( FCP_Comment_Rate::can_edit() ) {
-                edit_comment_link( __( 'Edit' ), '  ', '' );
-            }
-            
-            echo get_comment_date();
-            //echo get_comment_time();
-
-            ?>
-        </div>
-        <?php
-    }
-
-    public function form_view_fixes() {
-
-        // not logged in layout fixes
-        // remove not used fields for not logged-in-s
-        add_filter( 'comment_form_default_fields', function($fields) {
-            unset( $fields['url'] );
-            unset( $fields['cookies'] );
-            return $fields;
-        });
-
-        // the form fields order change
-        add_filter( 'comment_form_fields', function($fields){
-
-            $new_order = ['author', 'email', 'comment'];
-            $new_fields = [];
-
-            foreach ( $new_order as $k ) {
-                $new_fields[ $k ] = $fields[ $k ];
-                unset( $fields[ $k ] );
-            }
-
-            if ( $fields ) {
-                foreach( $fields as $k => $v ) {
-                    $new_fields[ $k ] = $v;
-                }
-            }
-
-            return $new_fields;
-        });
-        
-        // customize the form defaults
-        add_filter( 'comment_form_defaults', function($d) {
-
-            // modify the form printing function comment_form()
-            $d['comment_notes_before'] = '';
-            $d['logged_in_as'] = '';
-
-            $d['title_reply'] = FCP_Comment_Rate::is_replying() ? __( 'Leave a reply to', 'fcpcr' ) : __( 'Leave a Review', 'fcpcr' );
-            
-            $d['title_reply_before'] = '<h2 id="reply-title" class="comment-reply-title">';
-            $d['title_reply_after'] = '</h2>';
-
-            $d['fields']['author'] = '
-                <p class="comment-form-author">
-                    <input id="author" name="author" type="text" value="" size="30" placeholder="' . __( 'Name' ) . '*" required="required" maxlength="245" />
-                </p>
-            ';
-
-            $d['fields']['email'] = '
-                <p class="comment-form-email">
-                    <label>
-                        <input id="email" name="email" type="text" value="" size="30" aria-describedby="email-notes" placeholder="' . __( 'Email' ) . '*" required="required" maxlength="100" />
-                    </label>
-                </p>
-            ';
-
-            $d['comment_field'] = '
-                <p class="comment-form-comment">
-                    <label>
-                        <textarea id="comment" name="comment" cols="45" rows="8" placeholder="' .
-                        ( FCP_Comment_Rate::is_replying() ? __( 'Your Reply', 'fcpcr' ) : __( 'Your Review', 'fcpcr' ) ) .
-                        '*" maxlength="65525"></textarea>
-                    </label>
-                </p>
-            ';
-
-            $d['submit_button'] = '
-                <input name="submit" type="submit" id="submit" class="submit" value="' .
-                ( FCP_Comment_Rate::is_replying() ? __( 'Reply', 'fcpcr' ) : __( 'Post Review', 'fcpcr' ) ) .
-                '">
-            ';
-
-            return $d;
-        });
-    }
-
-    public function form_fields_layout($a) {
-        ?>
-        <div class="<?php echo self::$pr ?>fields wp-block-column" style="flex-basis:33.33%">
-        <?php
-            foreach ( self::$ratings as $v ) {
-                $slug = self::slug( $v );
-        ?>
-            <fieldset class="<?php echo self::$pr ?>wrap">
-                <legend><?php _e( $v, 'fcpcr' ) ?></legend>
-                <div class="<?php echo self::$pr ?>radio_bar">
-                <?php for ( $i = self::$stars; $i > 0; $i-- ) { ?>
-                    <input type="radio"
-                        id="<?php echo $slug . $i ?>"
-                        name="<?php echo $slug ?>"
-                        value="<?php echo $i ?>"
-                    />
-                    <label for="<?php echo $slug . $i ?>" title="<?php echo $i ?>"></label>
-                <?php } ?>
-                </div>
-            </fieldset>
-        <?php } ?>
-        </div>
-        <?php
-    }
-    
-    private function comment_stars_wrap_layout($title, $stars) {
-        ob_start();
-        
-        ?>
-        <div class="<?php echo self::$pr ?>wrap">
-            <div class="<?php echo self::$pr ?>headline"><?php _e( $title, 'fcpcr' ) ?></div>
-            <?php self::stars_layout( $stars ) ?>
-        </div>
-        <?php
-        
-        $content = ob_get_contents();
-        ob_end_clean();
-        return $content;
-    }
-    
-    public function comment_rating_draw($content) {
-        $result = '';
-    
-        foreach ( self::$ratings as $v ) {
-            $slug = self::slug( $v );
-
-            if ( $stars = get_comment_meta( get_comment_ID(), $slug, true ) ) {
-                $result .= $this->comment_stars_wrap_layout( $v, $stars );
-            }
-        }
-        
-        if ( $result ) {
-            $result = '<div class="'.self::$pr.'comment">'.$result.'</div>';
-        }
-
-        return $result . $content;
-    }
 
     public function form_fields_save($comment_id) {
 
-        if ( self::is_replying() ) { // stars are only for the reviews (1st lvl)
-            return;
-        }
+         // stars are only for the reviews (1st lvl comments)
+        if ( self::is_replying() ) { return; }
 
-        foreach ( self::$ratings as $v ) {
+        foreach ( self::$competencies as $v ) {
             $slug = self::slug( $v );
-
-            if ( ( !isset( $_POST[ $slug ] ) ) ) {
-                //delete_comment_meta( $comment_id, $slug );
-                continue;
-            }
-
+            if ( ( !isset( $_POST[ $slug ] ) ) ) { continue; }
             add_comment_meta( $comment_id, $slug, (int) $_POST[ $slug ] );
         }
     }
 
-    public function styles_scripts_add() {
-        wp_enqueue_style( self::$pr . 'stars', $this->self_url . 'style.css', [], $this->css_ver );
-    }
 
-    public function styles_dynamic_print() {
-        
-        $width = round( 100 / ( self::$stars - 1 + self::$star_proportions ), 5 );
-        $height = round( $width * self::$star_proportions, 5 );
-        $wh_radio = round( 100 / self::$stars, 5 );
-        // ++ can't really get the accurate width by height, so should count background-width for .cr_rating_bar > div
-        ?>
-        <style>
-            .cr_rating_bar {
-                --<?php echo self::$pr ?>bar-height:<?php echo $height ?>%;
-            }
-            .cr_fields {
-                --<?php echo self::$pr ?>star-size:<?php echo $wh_radio ?>%;
-            }
-        </style>
-        <?php
-    }
-
-    public function filter_comment($commentdata) {
-
-        if ( !self::can_reply() ) {
-            //unset( $commentdata['comment_post_ID'] );
-            //return [];
-        }
-
-        return $commentdata;
-
-    }
-    
     public function filter_comments_actions_view($actions) {
 
-        if ( !self::can_reply() ) {
-            unset(
-                $actions['reply']
-            );
-        }
-        
+        if ( self::comment_filter() === false ) { return $actions; }
+
+        $remove = []; // actions to remove
+        if ( !self::can_reply() ) { $remove[] = 'reply'; }
         if ( !self::can_edit() ) {
-            unset(
-                $actions['edit'],
-                $actions['quickedit'],
-                $actions['trash'],
-                $actions['delete'],
-                $actions['spam'],
-                $actions['approve'],
-                $actions['unapprove']
-            );
+            $remove = array_merge( $remove, ['edit', 'quickedit', 'trash', 'delete', 'spam', 'approve', 'unapprove'] );
         }
 
+        foreach ( $remove as $v ) { unset( $actions[ $v ] ); }
         return $actions;
     }
 
     public function filter_comments_actions() { // ++ajax actions are still intact :( ++ try using transition_comment_status hook maybe or the hooks, which are used for function reset_total_score()!!
+    // ++try using 
         if ( !isset( $_GET['action'] ) && !isset( $_POST['action'] ) ) { return; }
 
         if ( !self::can_reply() ) {
@@ -462,17 +206,17 @@ class FCP_Comment_Rate {
 
 //-----__--___-__--_______STATICS to print in templates -------___--_______-
 
-    public static function nominations_layout($ratings) {
-        foreach ( self::$ratings as $v ) {
+    public static function nominations_layout($competencies) {
+        foreach ( self::$competencies as $v ) {
             $slug = self::slug( $v );
-            if ( !$ratings[ $slug ] ) {
+            if ( !$competencies[ $slug ] ) {
                 continue;
             }
             ?>
             <div class="<?php echo self::$pr ?>nomination">
                 <div class="<?php echo self::$pr ?>wrap">
                     <div class="<?php echo self::$pr ?>headline"><?php _e( $v, 'fcpcr' ) ?></div>
-                    <?php self::stars_layout( $ratings[ $slug ] ) ?>
+                    <?php self::stars_layout( $competencies[ $slug ] ) ?>
                 </div>
             </div>
             <?php
@@ -487,7 +231,7 @@ class FCP_Comment_Rate {
         $width = round( $stars / self::$stars * 100, 5 );
         
         ?>
-        <div class="<?php echo self::$pr ?>rating_bar">
+        <div class="<?php echo self::$pr ?>stars_bar">
             <div style="width:<?php echo $width ?>%"></div>
         </div>
         <?php
@@ -507,13 +251,13 @@ class FCP_Comment_Rate {
             'per_nomination_avg' => [], // total / filled
             'cast_weights' => [],
             'per_nomination_wtd' => [], // avg * casted weight
-            'not_zero_ratings_amo' => 0, // <= count( self::$ratings )
+            'not_zero_ratings_amo' => 0, // <= count( self::$competencies )
             'total_avg' => 0,
             'total_wtd' => 0,
         ];
 
         // fetch ratings
-        foreach ( self::$ratings as $v ) {
+        foreach ( self::$competencies as $v ) {
             $slug = self::slug( $v );
 
             $a['per_nomination_sum'][ $slug ] = 0;
@@ -530,7 +274,7 @@ class FCP_Comment_Rate {
         }
 
         // counting avgs weighted and totals
-        foreach ( self::$ratings as $k => $v ) {
+        foreach ( self::$competencies as $k => $v ) {
             $slug = self::slug( $v );
 
             $a['per_nomination_avg'][ $slug ] = $a['not_zero_stars_amo'][ $slug ] ?
@@ -540,10 +284,10 @@ class FCP_Comment_Rate {
             // cast weights
             $a['per_nomination_wtd'][ $slug ] = $a['per_nomination_avg'][ $slug ];
 
-            if ( isset( self::$weights ) && count( self::$weights ) === count( self::$ratings ) ) {
+            if ( isset( self::$weights ) && count( self::$weights ) === count( self::$competencies ) ) {
 
                 $a['cast_weights'][ $k ] = 
-                    self::$weights[ $k ] * count( self::$ratings ) / array_sum( self::$weights );
+                    self::$weights[ $k ] * count( self::$competencies ) / array_sum( self::$weights );
                     
                 $a['per_nomination_wtd'][ $slug ] =
                     $a['per_nomination_avg'][ $slug ] * $a['cast_weights'][ $k ];
@@ -585,8 +329,8 @@ class FCP_Comment_Rate {
         return $keep[ $name ];
     }
 
-    public static function is_replying() {
-        if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { // ++ && is_singular()?
+    public static function is_replying() { // posting a not first lvl comment, get && post
+        if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { // ++ && is_singular('clinic')?
             return true;
         }
         if ( isset( $_POST['comment_parent'] ) && $_POST['comment_parent'] != '0' ) {
@@ -594,29 +338,20 @@ class FCP_Comment_Rate {
         }
         return false;
     }
-    public static function can_post_a_reply() { // the post author or an admin ++can remove
+    public static function can_post_a_reply() { // get && post
         if (
-            self::is_replying() &&
+            //self::is_replying() &&
             current_user_can( 'edit_post' )
-            // ++ && the comment belongs to current page?
+            // ++ && the comment belongs to current page?? ++ test if need to add
         ) {
             return true;
         }
         return false;
     }
     public static function can_reply() {
-        if ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
-            $comment = get_comment( $_POST['comment_ID'] );
-            
-        } else { // filter the front-end inside the comments loop
-            global $comment;
-        }
-        
-        if ( !isset( $comment->comment_post_ID ) ) { return false; }
-        
-        // don't interfere other post types comments rules
-        $post_type = get_post_type( $comment->comment_post_ID );
-        if ( !in_array( $post_type, self::$types ) ) { return true; }
+
+        $comment = self::comment_filter();
+        if ( $comment === false ) { return false; }
         
         if (
             !$comment->comment_parent && // only 2 lvls
@@ -628,21 +363,9 @@ class FCP_Comment_Rate {
         return false;
     }
     public static function can_edit() {
-        if ( isset( $_GET['action'] ) && isset( $_GET['c'] ) ) { // filter the admin screens & get actions
-            $comment = get_comment( $_GET['c'] );
-            
-        } elseif ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
-            $comment = get_comment( $_POST['comment_ID'] );
-            
-        } else { // filter the front-end inside the comments loop
-            global $comment;
-        }
-        
-        if ( !$comment || !is_object( $comment ) ) { return false; }
 
-        // don't interfere other post types comments rules
-        $post_type = get_post_type( $comment->comment_post_ID );
-        if ( !in_array( $post_type, self::$types ) ) { return true; }
+        $comment = self::comment_filter();
+        if ( $comment === false ) { return false; }
 
         if (
             (
@@ -655,58 +378,85 @@ class FCP_Comment_Rate {
         }
         return false;
     }
-    
-    public static function print_rating_summary() {
-        $ratings = self::ratings_count();
 
+    // check if the comment fits the post type
+    public static function comment_filter($comment = '') {
+
+        if ( $comment && is_numeric( $comment ) ) {
+            $comment = get_comment( $comment );
+            if ( !$comment || !is_object( $comment ) ) { return false; }
+        }
+
+        if ( !$comment || !is_object( $comment ) ) {
+            
+            if ( isset( $_GET['action'] ) && isset( $_GET['c'] ) ) { // filter the admin screens & get actions
+                $comment = get_comment( $_GET['c'] );
+            } elseif ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
+                $comment = get_comment( $_POST['comment_ID'] );
+            } else { // filter the front-end inside the comments loop
+                global $comment; // ++can just pass empty get_comment() to retrieve the global value - test it
+            }
+        }
+
+        if ( !$comment || !is_object( $comment ) ) { return false; }
+        if ( !isset( $comment->comment_post_ID ) ) { return false; }
+        
+        $post_type = get_post_type( $comment->comment_post_ID );
+        if ( !in_array( $post_type, self::$types ) ) { return false; }
+        return $comment;
+    }
+
+    public static function print_rating_summary() {
+        $competencies = self::ratings_count();
         ?>
-        <div class="comment-rating-headline with-line">
+        <div class="<?php echo self::$pr ?>summary-headline">
             <?php _e( 'Reviews', 'fcpcr' ) ?> (<?php echo get_comments_number() ?>)
         </div>
-        <div class="comment-rating-total">
-        <?php self::stars_layout( $ratings['__total'] ) ?>
-        <?php echo $ratings['__total'] ? number_format( round( $ratings['__total'], 1 ), 1, ',', '' ) : '' ?>
+        <div class="<?php echo self::$pr ?>summary-total">
+        <?php self::stars_layout( $competencies['__total'] ) ?>
+        <?php echo $competencies['__total'] ? number_format( round( $competencies['__total'], 1 ), 1, ',', '' ) : '' ?>
         </div>
-        <?php self::nominations_layout( $ratings ) ?>
+        <?php self::nominations_layout( $competencies ) ?>
         <?php
+        self::style_summary();
     }
-    
+
     public static function print_rating_summary_short() {
 
-        $ratings = self::ratings_count();
-        if ( !$ratings ) { return; }
+        $competencies = self::ratings_count();
+        if ( !$competencies ) { return; }
 
-        if ( $ratings['__total'] && self::$schema ) {
-            self::print_rating_summary_short_schema($ratings);
+        if ( $competencies['__total'] && self::$schema ) {
+            self::print_rating_summary_short_schema($competencies);
             return;
         }
 
-        self::print_rating_summary_short_schema($ratings);
+        self::print_rating_summary_short_schema($competencies);
     }
     
-    private static function print_rating_summary_short_noschema($ratings) {
+    private static function print_rating_summary_short_noschema($competencies) {
         ?>
-        <div class="comment-rating-total">
-            <?php self::stars_layout( $ratings['__total'] ) ?>
+        <div class="<?php echo self::$pr ?>summary-total">
+            <?php self::stars_layout( $competencies['__total'] ) ?>
             <?php
-            echo $ratings['__total'] ?
-            '<span>'.number_format( round( $ratings['__total'], 1 ), 1, ',', '' ).'</span>' :
+            echo $competencies['__total'] ?
+            '<span>'.number_format( round( $competencies['__total'], 1 ), 1, ',', '' ).'</span>' :
             '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>';
             ?>
         </div>
         <?php
     }
     
-    private static function print_rating_summary_short_schema($ratings) {
+    private static function print_rating_summary_short_schema($competencies) {
         ?>
-        <div class="comment-rating-total" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
-            <?php self::stars_layout( $ratings['__total'] ) ?>
+        <div class="<?php echo self::$pr ?>summary-total" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
+            <?php self::stars_layout( $competencies['__total'] ) ?>
             <?php
-            echo $ratings['__total'] ?
-            '<span itemprop="ratingValue">'.number_format( round( $ratings['__total'], 1 ), 1, ',', '' ).'</span>' :
+            echo $competencies['__total'] ?
+            '<span itemprop="ratingValue">'.number_format( round( $competencies['__total'], 1 ), 1, ',', '' ).'</span>' :
             '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>';
             ?>
-            <meta itemprop="ratingCount" content="<?php echo $ratings['__count'] ?>">
+            <meta itemprop="ratingCount" content="<?php echo $competencies['__count'] ?>">
         </div>
         <?php
     }
@@ -717,6 +467,162 @@ class FCP_Comment_Rate {
         self::stars_layout( $total ); // ++just add option to hide if zero
     }
 
+
+    // ************* comment print modifying
+
+    // the comments printing custom layout
+    // apply the rephrasing & change the elements order and structure
+    public function comment_print( $comment, $args, $depth ) {
+        // the original is in wp-includes/class-walker-comment.php
+        include __DIR__ . '/inc/class-walker-comment.php';
+    }
+    
+    public function comment_rating_draw($content) {
+        $result = '';
+
+        $comment_stars_wrap_layout = function($title, $stars) {
+            ob_start();
+            
+            ?>
+            <div class="<?php echo self::$pr ?>wrap">
+                <div class="<?php echo self::$pr ?>headline"><?php _e( $title, 'fcpcr' ) ?></div>
+                <?php self::stars_layout( $stars ) ?>
+            </div>
+            <?php
+            
+            $content = ob_get_contents();
+            ob_end_clean();
+            return $content;
+        };
+
+        foreach ( self::$competencies as $v ) {
+            $slug = self::slug( $v );
+
+            if ( $stars = get_comment_meta( get_comment_ID(), $slug, true ) ) {
+                $result .= $comment_stars_wrap_layout( $v, $stars );
+            }
+        }
+        
+        if ( $result ) {
+            $result = '<div class="'.self::$pr.'comment">'.$result.'</div>';
+        }
+
+        return $result . $content;
+    }
+
+
+    // ************* forms modifying
+
+    private function draw_main_fields_wrapper() {
+        // wrap the main fields to fit the rating in
+        add_action( 'comment_form_top', function() { // before
+            echo '<div class="' . self::$pr . 'main-fields wp-block-column">';
+        });
+        add_action( 'comment_form', function() { // after
+            echo '</div>';
+        });
+        add_filter( 'comment_form_defaults', function($d) { // add class-name to the <form
+            $d['class_form'] .= ' wp-block-columns';
+            return $d;
+        });
+    }
+
+    private function form_layout_change() {
+
+        // remove not used fields
+        add_filter( 'comment_form_default_fields', function($fields) {
+            unset( $fields['url'] );
+            unset( $fields['cookies'] );
+            return $fields;
+        });
+
+        // modify the text lines
+        add_filter( 'comment_form_defaults', function($d) {
+
+            // modify the form printing function comment_form()
+            $d['comment_notes_before'] = '';
+            $d['logged_in_as'] = '';
+            
+            $is_replying = self::is_replying();
+
+            $d['title_reply'] =  __( 'Leave a Review', 'fcpcr' );
+            $d['title_reply_to'] = __( 'Leave a reply to %s', 'fcpcr' );
+
+            $comment = $is_replying ? __( 'Your Reply', 'fcpcr' ) : __( 'Your Review', 'fcpcr' );
+            $d['comment_field'] = preg_replace( '/placeholder="([^"]*)"/',
+                'placeholder="'.$comment.'"', $d['comment_field'] );
+            
+            $submit = $is_replying ? __( 'Reply', 'fcpcr' ) : __( 'Post the Review', 'fcpcr' );
+            $d['submit_button'] = preg_replace( '/value="([^"]*)"/', 'value="'.$submit.'"', $d['submit_button'] );
+
+            return $d;
+        });
+    }
+
+    public function draw_rating_fields($a) {
+        ?>
+        <div class="<?php echo self::$pr ?>fields wp-block-column" style="flex-basis:33.33%">
+        <?php
+            foreach ( self::$competencies as $v ) {
+                $slug = self::slug( $v );
+        ?>
+            <fieldset class="<?php echo self::$pr ?>wrap">
+                <legend><?php _e( $v, 'fcpcr' ) ?></legend>
+                <div class="<?php echo self::$pr ?>radio_bar">
+                <?php for ( $i = self::$stars; $i > 0; $i-- ) { ?>
+                    <input type="radio"
+                        id="<?php echo $slug . $i ?>"
+                        name="<?php echo $slug ?>"
+                        value="<?php echo $i ?>"
+                    />
+                    <label for="<?php echo $slug . $i ?>" title="<?php echo $i ?>"></label>
+                <?php } ?>
+                </div>
+            </fieldset>
+        <?php } ?>
+        </div>
+        <?php
+    }
+
+
+    // ************* styles functions
+
+    public function style_form() {
+        wp_enqueue_style( self::$pr . 'stars-form', plugins_url( '/', __FILE__ ) . 'assets/form.css', [], self::ver() );
+    }
+    public function style_comments() {
+        wp_enqueue_style( self::$pr . 'stars-comments', plugins_url( '/', __FILE__ ) . 'assets/comments.css', [], self::ver() );
+    }
+    public static function style_summary() {
+        static $styles_printed;
+        if ( $styles_printed ) { return; }
+        $styles_printed = true;
+        echo '<style>';
+        include_once __DIR__ . '/assets/summary.css';  //++not like that, include along with the shortcode or the method()
+        include_once __DIR__ . '/assets/fs-stars.css';  //++not like that, include along --||--
+        echo '</style>';
+    }
+
+    public function style_sizes() {
+        $width = round( 100 / ( self::$stars - 1 + self::$proportions ), 3 );
+        $height = round( $width * self::$proportions, 3 );
+        $wh_radio = round( 100 / self::$stars, 5 );
+        ?><style>.cr_stars_bar{--star_height:<?php echo $height ?>%}.cr_fields{--star_size:<?php echo $wh_radio ?>%;}</style><?php
+    }
+
 }
 
 new FCP_Comment_Rate();
+
+// ++first screen css for stars
+/* the number of first lvl comments
+    $first_lvl_comments = get_comments([
+        'post_id' => get_the_ID(),
+        'status' => 'approve',
+        'hierarchical' => 'threaded', // count only first lvl
+        'count' => true, // return only the count
+    ]);
+//*/
+// ++change the message to ~only author and admin can reply the review
+// ++add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f ???
+// ++load the gutenberg styles if are not loaded on the page (columns layout)
