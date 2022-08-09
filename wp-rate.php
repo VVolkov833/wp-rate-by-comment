@@ -67,7 +67,7 @@ class FCP_Comment_Rate {
             add_filter( 'wp_list_comments_args', function($a) {
                 $new_args = [
                     'avatar_size' => 80,
-                    'max_depth' => 3,
+                    'max_depth' => 2,
                     'callback' => [$this, 'comment_print'], // the reply & edit links are printed here too
                     //'short_ping' => true, // the simplest format?
                     'reply_text' => __( 'Reply to this review', 'fcpcr' ),
@@ -95,18 +95,19 @@ class FCP_Comment_Rate {
 
         // ************* wp-admin printing conditions
 
-        // hide the links in admin // post-type filter is in can_reply & can_edit
-        add_action( 'bulk_actions-edit-comments', [$this, 'filter_comments_actions_view'] );
-        add_action( 'comment_row_actions', [$this, 'filter_comments_actions_view'] );
+        // hide the links in admin
+        add_action( 'bulk_actions-edit-comments', [$this, 'hide_comments_actions_links'] );
+        add_action( 'comment_row_actions', [$this, 'hide_comments_actions_links'] );
 
-        // filter displaying the editing screens
-        add_action( 'admin_init', [$this, 'filter_comments_actions'] );
-        
+        // filter displaying the editing screen
+        add_action( 'current_screen', [$this, 'hide_comments_actions_screens'] );
+
 
         // ************* operations with comments
 
         // saving
         //add_filter( 'preprocess_comment', [$this, 'filter_comment'] ); // add if filter for the content is needed
+        //add_filter( 'comment_save_pre', ' // same, but for the content exactly
         add_action( 'comment_post', [$this, 'form_fields_save'] ); // ++ add post type limitations to this too
 
         // recount the total rating of a post on the following actions
@@ -147,22 +148,16 @@ class FCP_Comment_Rate {
         }
     }
 
-
-    public function filter_comments_actions_view($actions) {
-
-        if ( self::comment_filter() === false ) { return $actions; }
-
-        $remove = []; // actions to remove
-        if ( !self::can_reply() ) { $remove[] = 'reply'; }
-        if ( !self::can_edit() ) {
-            $remove = array_merge( $remove, ['edit', 'quickedit', 'trash', 'delete', 'spam', 'approve', 'unapprove'] );
+    public function hide_comments_actions_screens__() {
+        if ( !isset( $_GET['action'] ) ) { return; }
+        if ( self::can_edit() ) { return; }
+        $forbid = [ 'approvecomment', 'unapprovecomment', 'editcomment', 'spamcomment', 'trashcomment' ];
+        if ( isset( $_GET['action'] ) && in_array( $_GET['action'], $forbid ) ) {
+            self::access_denied();
         }
-
-        foreach ( $remove as $v ) { unset( $actions[ $v ] ); }
-        return $actions;
     }
 
-    public function filter_comments_actions() { // ++ajax actions are still intact :( ++ try using transition_comment_status hook maybe or the hooks, which are used for function reset_total_score()!!
+    public function hide_comments_actions_screens_() { // ++ajax actions are still intact :( ++ try using transition_comment_status hook maybe or the hooks, which are used for function reset_total_score()!!
     // ++try using 
         if ( !isset( $_GET['action'] ) && !isset( $_POST['action'] ) ) { return; }
 
@@ -329,6 +324,10 @@ class FCP_Comment_Rate {
         return $keep[ $name ];
     }
 
+    public static function access_denied() {
+        wp_die( 'Access denied', 'Access denied', [ 'response' => 403, 'back_link' => true ] );    
+    }
+
     public static function is_replying() { // posting a not first lvl comment, get && post
         if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { // ++ && is_singular('clinic')?
             return true;
@@ -465,6 +464,29 @@ class FCP_Comment_Rate {
         $total = self::ratings_count()['__total'];
         if ( !$total ) { return; }
         self::stars_layout( $total ); // ++just add option to hide if zero
+    }
+
+
+    // ************* wp-admin printing limitations
+
+    public function hide_comments_actions_links($actions) {
+
+        if ( self::comment_filter() === false ) { return $actions; }
+
+        $remove = []; // actions to remove
+        if ( !self::can_reply() ) { $remove[] = 'reply'; }
+        if ( !self::can_edit() ) {
+            $remove = array_merge( $remove, ['edit', 'quickedit', 'trash', 'delete', 'spam', 'approve', 'unapprove'] );
+        }
+
+        foreach ( $remove as $v ) { unset( $actions[ $v ] ); }
+        return $actions;
+    }
+
+    public function hide_comments_actions_screens() { // only the edit screen there is, actually
+        if ( get_current_screen()->id !== 'comment' ) { return; }
+        if ( self::can_edit() ) { return; }
+        self::access_denied();
     }
 
 
@@ -626,3 +648,6 @@ new FCP_Comment_Rate();
 // ++change the message to ~only author and admin can reply the review
 // ++add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f ???
 // ++load the gutenberg styles if are not loaded on the page (columns layout)
+// ++edit the rating on the back-end https://wp-kama.ru/id_8342/kak-dobavit-proizvolnye-polya-v-formu-kommentariev-wordpress.html
+// ++use https://wp-kama.ru/hook/get_comment_author_link hook to disable the author link
+    // .form-table.editcomment tr:nth-child(3) {display:none}
