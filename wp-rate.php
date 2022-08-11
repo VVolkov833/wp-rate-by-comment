@@ -39,12 +39,21 @@ class FCP_Comment_Rate {
 
 
         // ************* printing conditions
+
         add_action( 'wp', function() {
         
             if ( is_admin() ) { return; }
             global $post;
             if ( !in_array( $post->post_type, self::$types ) ) { return; }
 
+
+            // forms printing conditions
+            add_filter( 'comments_open', function ( $open, $post_id ) { // notice - only printing is effected
+                if ( !$open ) { return false; }
+                $comment = self::is_replying();
+                if ( $comment && !self::can_reply( $comment ) ) { return false; }
+                return true;
+            }, 10, 2 );
 
             // forms modifying
             if ( comments_open() ) { // just to not run those in common circumstances - the printing is filtered anyways
@@ -55,20 +64,13 @@ class FCP_Comment_Rate {
                 }
             }
 
-            // forms printing conditions
-            add_filter( 'comments_open', function ( $open, $post_id ) { // notice - only printing is effected
-                if ( !$open ) { return false; }
-                //if ( !in_array( get_post( $post_id )->post_type, self::$types ) ) { return false; } //^
-                if ( self::is_replying() && !self::can_post_a_reply() ) { return false; }
-                return true;
-            }, 10, 2 );
 
             // comments printing modify & default settings for wp_list_comments()
             add_filter( 'wp_list_comments_args', function($a) {
                 $new_args = [
                     'avatar_size' => 80,
                     'max_depth' => 2,
-                    'callback' => [$this, 'comment_print'], // the reply & edit links are printed here too
+                    'callback' => [$this, 'comment_print'], // the reply & edit links are printed here
                     //'short_ping' => true, // the simplest format?
                     'reply_text' => __( 'Reply to this review', 'fcpcr' ),
                     'reverse_top_level' => true,
@@ -148,56 +150,77 @@ class FCP_Comment_Rate {
         }
     }
 
-    public function hide_comments_actions_screens__() {
-        if ( !isset( $_GET['action'] ) ) { return; }
-        if ( self::can_edit() ) { return; }
-        $forbid = [ 'approvecomment', 'unapprovecomment', 'editcomment', 'spamcomment', 'trashcomment' ];
-        if ( isset( $_GET['action'] ) && in_array( $_GET['action'], $forbid ) ) {
-            self::access_denied();
-        }
+
+    // ************* static functional
+
+    public static function is_replying() {
+        if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { return $_GET['replytocom']; }
+        if ( isset( $_POST['comment_parent'] ) && $_POST['comment_parent'] != '0' ) { return $_POST['comment_parent']; }
+        return false;
     }
 
-    public function hide_comments_actions_screens_() { // ++ajax actions are still intact :( ++ try using transition_comment_status hook maybe or the hooks, which are used for function reset_total_score()!!
-    // ++try using 
-        if ( !isset( $_GET['action'] ) && !isset( $_POST['action'] ) ) { return; }
+    public static function can_reply($comment = '') { // doesn't extend, only limit the role capabilities
 
-        if ( !self::can_reply() ) {
-        
-            $forbidden_post_actions = [
-                'replyto-comment'
-            ];
+        $comment = self::comment_filter( $comment );
 
-            if ( isset( $_POST['action'] ) && in_array( $_POST['action'], $forbidden_post_actions ) ) {
-                die( 'Access denied' );
-            }
-        }
-        
-        if ( !self::can_edit() ) {
+        if ( $comment === false ) { return false; }
+        if ( !$comment->comment_approved ) { return false; }
+        if ( (int) $comment->comment_parent !== 0 ) { return false; } // only the first lvl comment can be replied
+        if ( !current_user_can( 'edit_post', $comment->comment_post_ID ) ) { return false; }
 
-            $forbidden_get_actions = [
-                'approvecomment',
-                'unapprovecomment',
-                'editcomment',
-                'spamcomment',
-                'trashcomment'
-            ];
-            
-            $forbidden_post_actions = [
-                'edit-comment', // quic edit
-                'editedcomment' // the edit interface
-            ];
-
-            if ( isset( $_GET['action'] ) && in_array( $_GET['action'], $forbidden_get_actions ) ) {
-                die( 'Access denied' );
-            }
-
-            if ( isset( $_POST['action'] ) && in_array( $_POST['action'], $forbidden_post_actions ) ) {
-                die( 'Access denied' );
-            }
-        }
+        return true;
     }
     
+    public static function can_edit($comment = '') { // doesn't extend, only limit the role capabilities
 
+        $comment = self::comment_filter( $comment );
+
+        if ( $comment === false ) { return false; }
+        if ( current_user_can( 'administrator' ) ) { return true; }
+        if ( current_user_can( 'edit_comment', $comment->comment_ID ) && (int) $comment->user_id === get_current_user_id() ) { return true; }
+        
+        return false;
+    }
+
+    // check if the comment fits the post type, return $comment object or false
+    public static function comment_filter($comment = '') {
+
+        if ( $comment && is_numeric( $comment ) ) {
+            $comment = get_comment( $comment );
+            if ( !$comment || !is_object( $comment ) ) { return false; }
+        }
+
+        if ( !$comment || !is_object( $comment ) ) {
+            
+            if ( isset( $_GET['action'] ) && isset( $_GET['c'] ) ) { // filter the admin screens & get actions
+                $comment = get_comment( $_GET['c'] );
+            } elseif ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
+                $comment = get_comment( $_POST['comment_ID'] );
+            } else { // filter the front-end inside the comments loop
+                global $comment; // ++can just pass empty get_comment() to retrieve the global value - test it
+            }
+        }
+
+        if ( !$comment || !is_object( $comment ) ) { return false; }
+        if ( !isset( $comment->comment_post_ID ) ) { return false; }
+        
+        $post_type = get_post_type( $comment->comment_post_ID );
+        if ( !in_array( $post_type, self::$types ) ) { return false; }
+        return $comment;
+    }
+
+    private static function slug($name) {
+        static $store = [];
+
+        if ( $store[ $name ] ) { return $store[ $name ]; }
+
+        $store[ $name ] = self::$pr . sanitize_title( $name );
+        return $store[ $name ];
+    }
+
+    public static function access_denied($m = '', $t = '') {
+        wp_die( $m ? $m : 'Access denied', $t ? $t : 'Access denied', [ 'response' => 403, 'back_link' => true ] );    
+    }
 
 //-----__--___-__--_______STATICS to print in templates -------___--_______-
 
@@ -312,98 +335,6 @@ class FCP_Comment_Rate {
         return $result;
     }
 
-    private static function slug($name) {
-        static $keep = [];
-        
-        if ( $keep[ $name ] ) {
-            return $keep[ $name ];
-        }
-        
-        $keep[ $name ] = self::$pr . sanitize_title( $name );
-    
-        return $keep[ $name ];
-    }
-
-    public static function access_denied() {
-        wp_die( 'Access denied', 'Access denied', [ 'response' => 403, 'back_link' => true ] );    
-    }
-
-    public static function is_replying() { // posting a not first lvl comment, get && post
-        if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { // ++ && is_singular('clinic')?
-            return true;
-        }
-        if ( isset( $_POST['comment_parent'] ) && $_POST['comment_parent'] != '0' ) {
-            return true;
-        }
-        return false;
-    }
-    public static function can_post_a_reply() { // get && post
-        if (
-            //self::is_replying() &&
-            current_user_can( 'edit_post' )
-            // ++ && the comment belongs to current page?? ++ test if need to add
-        ) {
-            return true;
-        }
-        return false;
-    }
-    public static function can_reply() {
-
-        $comment = self::comment_filter();
-        if ( $comment === false ) { return false; }
-        
-        if (
-            !$comment->comment_parent && // only 2 lvls
-            current_user_can( 'edit_post', $comment->comment_post_ID ) // ++might not be needed here
-        ) {
-            return true;
-        }
-
-        return false;
-    }
-    public static function can_edit() {
-
-        $comment = self::comment_filter();
-        if ( $comment === false ) { return false; }
-
-        if (
-            (
-                current_user_can( 'edit_comment', $comment->comment_ID ) && // ++might not be needed here
-                $comment->user_id == get_current_user_id()
-            ) ||
-            current_user_can( 'administrator' )
-        ) {
-            return true;
-        }
-        return false;
-    }
-
-    // check if the comment fits the post type
-    public static function comment_filter($comment = '') {
-
-        if ( $comment && is_numeric( $comment ) ) {
-            $comment = get_comment( $comment );
-            if ( !$comment || !is_object( $comment ) ) { return false; }
-        }
-
-        if ( !$comment || !is_object( $comment ) ) {
-            
-            if ( isset( $_GET['action'] ) && isset( $_GET['c'] ) ) { // filter the admin screens & get actions
-                $comment = get_comment( $_GET['c'] );
-            } elseif ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
-                $comment = get_comment( $_POST['comment_ID'] );
-            } else { // filter the front-end inside the comments loop
-                global $comment; // ++can just pass empty get_comment() to retrieve the global value - test it
-            }
-        }
-
-        if ( !$comment || !is_object( $comment ) ) { return false; }
-        if ( !isset( $comment->comment_post_ID ) ) { return false; }
-        
-        $post_type = get_post_type( $comment->comment_post_ID );
-        if ( !in_array( $post_type, self::$types ) ) { return false; }
-        return $comment;
-    }
 
     public static function print_rating_summary() {
         $competencies = self::ratings_count();
@@ -571,6 +502,7 @@ class FCP_Comment_Rate {
             $d['title_reply_to'] = __( 'Leave a reply to %s', 'fcpcr' );
 
             $comment = $is_replying ? __( 'Your Reply', 'fcpcr' ) : __( 'Your Review', 'fcpcr' );
+            // ++case for lable, not placeholder
             $d['comment_field'] = preg_replace( '/placeholder="([^"]*)"/',
                 'placeholder="'.$comment.'"', $d['comment_field'] );
             
@@ -645,9 +577,60 @@ new FCP_Comment_Rate();
         'count' => true, // return only the count
     ]);
 //*/
-// ++change the message to ~only author and admin can reply the review
+// ++change the message to ~only author and admin can reply the review ??
 // ++add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f ???
 // ++load the gutenberg styles if are not loaded on the page (columns layout)
+// .form-table.editcomment tr:nth-child(3) {display:none}
+// hide pingback checkbox too
 // ++edit the rating on the back-end https://wp-kama.ru/id_8342/kak-dobavit-proizvolnye-polya-v-formu-kommentariev-wordpress.html
-// ++use https://wp-kama.ru/hook/get_comment_author_link hook to disable the author link
-    // .form-table.editcomment tr:nth-child(3) {display:none}
+// change to private what can be changed
+// show the author only approved comments?
+// wp-admin reply has tags bar - remove
+// a redirect from dashboard doesn't work any more? Or I can just keep it?
+
+/*
+    public function hide_comments_actions_() { // ++ajax actions are still intact :( ++ try using transition_comment_status hook maybe or the hooks, which are used for function reset_total_score()!!
+    // ++try using 
+        if ( !isset( $_GET['action'] ) && !isset( $_POST['action'] ) ) { return; }
+
+        if ( !self::can_reply() ) {
+        
+            $forbidden_post_actions = [
+                'replyto-comment'
+            ];
+
+            if ( isset( $_POST['action'] ) && in_array( $_POST['action'], $forbidden_post_actions ) ) {
+                die( 'Access denied' );
+            }
+        }
+        
+        if ( !self::can_edit() ) {
+
+            $forbidden_get_actions = [
+                'approvecomment',
+                'unapprovecomment',
+                'editcomment',
+                'spamcomment',
+                'trashcomment'
+            ];
+            
+            $forbidden_post_actions = [
+                'edit-comment', // quic edit
+                'editedcomment' // the edit interface
+            ];
+
+            if ( isset( $_GET['action'] ) && in_array( $_GET['action'], $forbidden_get_actions ) ) {
+                die( 'Access denied' );
+            }
+
+            if ( isset( $_POST['action'] ) && in_array( $_POST['action'], $forbidden_post_actions ) ) {
+                die( 'Access denied' );
+            }
+        }
+    }
+    
+    public static function can_post_a_reply() { // get && ++post?? ++--!!
+        if ( current_user_can( 'edit_post' ) ) { return true; } // page author & admin
+        return false;
+    }
+//*/
