@@ -87,7 +87,7 @@ class FCP_Comment_Rate {
             if ( comments_open() ) {
                 add_action( 'wp_enqueue_scripts', [$this, 'style_form'] );
             }
-            if ( get_comments_number() ) {
+            if ( get_comments_number() || $_GET['unapproved'] ) {
                 add_action( 'wp_enqueue_scripts', [$this, 'style_comments'] );
             }
             add_action( 'wp_head', [$this, 'style_sizes'] );
@@ -103,6 +103,7 @@ class FCP_Comment_Rate {
 
         // filter displaying the editing screen
         add_action( 'current_screen', [$this, 'hide_comments_actions_screens'] );
+        add_action( 'current_screen', [$this, 'hide_unapproved_comments'] );
 
 
         // ************* operations with comments
@@ -160,11 +161,10 @@ class FCP_Comment_Rate {
     }
 
     public static function can_reply($comment = '') { // doesn't extend, only limit the role capabilities
-
         $comment = self::comment_filter( $comment );
-
         if ( $comment === false ) { return false; }
-        if ( !$comment->comment_approved ) { return false; }
+
+        if ( !$comment->comment_approved && !current_user_can('administrator') ) { return false; }
         if ( (int) $comment->comment_parent !== 0 ) { return false; } // only the first lvl comment can be replied
         if ( !current_user_can( 'edit_post', $comment->comment_post_ID ) ) { return false; }
 
@@ -172,13 +172,17 @@ class FCP_Comment_Rate {
     }
     
     public static function can_edit($comment = '') { // doesn't extend, only limit the role capabilities
-
         $comment = self::comment_filter( $comment );
-
         if ( $comment === false ) { return false; }
+
         if ( current_user_can( 'administrator' ) ) { return true; }
         if ( current_user_can( 'edit_comment', $comment->comment_ID ) && (int) $comment->user_id === get_current_user_id() ) { return true; }
         
+        return false;
+    }
+
+    public static function can_moderate($comment = '') { // doesn't extend, only limit the role capabilities
+        if ( current_user_can( 'administrator' ) ) { return true; }
         return false;
     }
 
@@ -405,9 +409,14 @@ class FCP_Comment_Rate {
         if ( self::comment_filter() === false ) { return $actions; }
 
         $remove = []; // actions to remove
-        if ( !self::can_reply() ) { $remove[] = 'reply'; }
+        if ( !self::can_reply() ) {
+            $remove = array_merge( $remove, ['reply'] );
+        }
         if ( !self::can_edit() ) {
             $remove = array_merge( $remove, ['edit', 'quickedit', 'trash', 'delete', 'spam', 'approve', 'unapprove'] );
+        }
+        if ( !self::can_moderate() ) {
+            $remove = array_merge( $remove, ['spam', 'approve', 'unapprove'] );
         }
 
         foreach ( $remove as $v ) { unset( $actions[ $v ] ); }
@@ -418,6 +427,21 @@ class FCP_Comment_Rate {
         if ( get_current_screen()->id !== 'comment' ) { return; }
         if ( self::can_edit() ) { return; }
         self::access_denied();
+        // ++self status is still present here
+    }
+    
+    public function hide_unapproved_comments() {
+        if ( !in_array( get_current_screen()->id, ['clinic', 'doctor'] ) ) { return; }
+        if ( self::can_moderate() ) { return; }
+        add_action( 'admin_footer', function() { ?>
+        <style>
+            #the-comment-list .unapproved { opacity:0.6 }
+            #the-comment-list .unapproved > td:last-child::after {
+                content:'[<?php _e( 'Awaiting moderation', 'fcpcr' ); ?>]';
+                text-transform:uppercase;
+            }
+        </style>
+        <?php });
     }
 
 
@@ -584,9 +608,11 @@ new FCP_Comment_Rate();
 // hide pingback checkbox too
 // ++edit the rating on the back-end https://wp-kama.ru/id_8342/kak-dobavit-proizvolnye-polya-v-formu-kommentariev-wordpress.html
 // change to private what can be changed
-// show the author only approved comments?
+// show the author only approved comments? or mark somehow more contrast
 // wp-admin reply has tags bar - remove
+    // and overall filter to nothing
 // a redirect from dashboard doesn't work any more? Or I can just keep it?
+// styles for not approved comments don't losd - maybe the issue is in the theme
 
 /*
     public function hide_comments_actions_() { // ++ajax actions are still intact :( ++ try using transition_comment_status hook maybe or the hooks, which are used for function reset_total_score()!!
