@@ -65,7 +65,7 @@ class FCP_Comment_Rate {
             }
 
 
-            // comments printing modify & default settings for wp_list_comments()
+            // comments printing modify & override settings for wp_list_comments()
             add_filter( 'wp_list_comments_args', function($a) {
                 $new_args = [
                     'avatar_size' => 80,
@@ -103,127 +103,97 @@ class FCP_Comment_Rate {
 
         // filter displaying the editing screen
         add_action( 'current_screen', [$this, 'hide_comments_actions_screens'] );
-        add_action( 'current_screen', [$this, 'hide_unapproved_comments'] );
+        add_action( 'current_screen', [$this, 'highlight_unapproved_comments'] );
 
 
-        // ************* operations with comments
+        // ************* operations with comments to limit
+
+        // limit operations
+        add_action( 'transition_comment_status', [$this, 'limit_status_change'], 10, 3 );
+        add_filter( 'preprocess_comment', [$this, 'filter_reply'] ); // hook works for now comments only
+        add_filter( 'wp_update_comment_data', [$this, 'filter_edit'], 10, 3 );
+
+
+        // ************* operations with comments to save
 
         // saving
-        //add_filter( 'preprocess_comment', [$this, 'filter_comment'] ); // add if filter for the content is needed
-        //add_filter( 'comment_save_pre', ' // same, but for the content exactly
-        add_action( 'comment_post', [$this, 'form_fields_save'] ); // ++ add post type limitations to this too
-
+        add_action( 'comment_post', [$this, 'save_ratings'] );
         // recount the total rating of a post on the following actions
-        add_action( 'trashed_comment', [$this, 'reset_total_score'] );
-        add_action( 'untrashed_comment', [$this, 'reset_total_score'] );
-        add_action( 'spammed_comment', [$this, 'reset_total_score'] );
-        add_action( 'unspammed_comment', [$this, 'reset_total_score'] );
-
-        add_action( 'comment_unapproved_to_approved', [$this, 'reset_total_score'] );
-        add_action( 'comment_approved_to_unapproved', [$this, 'reset_total_score'] );
-        add_action( 'comment_approved_to_delete', [$this, 'reset_total_score'] );
-        add_action( 'comment_delete_to_approved', [$this, 'reset_total_score'] );
-
-        add_action( 'comment_post', [$this, 'reset_total_score'] ); // added for logged-in-s
+        add_action( 'comment_post', [$this, 'reset_score_on_new'], 10, 3 );
+        add_action( 'transition_comment_status', [$this, 'reset_score_on_transit'], 10, 3 );
 
     }
 
 
-    public function reset_total_score($comment_id) {
+    // ************* operations with comments to limit
 
-        $comment = get_comment( $comment_id ); 
-        $post_id = $comment->comment_post_ID;
+    public function limit_status_change($new_status, $old_status, $comment) {
+        $comment = self::comment_filter( $comment );
+        if ( $comment === false ) { self::access_denied(); }
+        
+        if ( !self::can_moderate() && in_array( $new_status, ['spammed', 'unspammed', 'approved', 'unapproved'] ) ) {
+            self::access_denied();
+        }
+        if ( !self::can_edit( $comment ) && in_array( $new_status, ['trashed', 'untrashed'] ) ) {
+            self::access_denied();
+        }
+    }
+    
+    public function filter_reply($commentdata) {
+        $comment = self::comment_filter( $commentdata['comment_parent'] );
+        if ( $comment === false ) { self::access_denied(); }
+    
+        if ( !self::can_reply( $comment ) ) {
+            self::access_denied();
+        }
+        return $commentdata;
+    }
+    
+    function filter_edit($data, $comment, $commentarr){
+        $comment = self::comment_filter( $comment['comment_ID'] );
+        if ( $comment === false ) { self::access_denied(); }
 
-        update_post_meta( $post_id, 'cr_total_wtd', self::ratings_count( $post_id )['__total'] );
-
+        if ( !self::can_edit( $comment ) ) {
+            self::access_denied();
+        }
+        return $data;
     }
 
 
-    public function form_fields_save($comment_id) {
+    // ************* operations with comments to save
+
+    public function save_ratings($comment_id) {
 
          // stars are only for the reviews (1st lvl comments)
         if ( self::is_replying() ) { return; }
 
+        $comment = self::comment_filter( $comment_id );
+        if ( $comment === false ) { return false; }
+
         foreach ( self::$competencies as $v ) {
             $slug = self::slug( $v );
-            if ( ( !isset( $_POST[ $slug ] ) ) ) { continue; }
-            add_comment_meta( $comment_id, $slug, (int) $_POST[ $slug ] );
+            if ( !isset( $_POST[ $slug ] ) || !is_numeric( $_POST[ $slug ] ) ) { continue; }
+            add_comment_meta( $comment->ID, $slug, (int) $_POST[ $slug ] );
         }
     }
 
-
-    // ************* static functional
-
-    public static function is_replying() {
-        if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { return $_GET['replytocom']; }
-        if ( isset( $_POST['comment_parent'] ) && $_POST['comment_parent'] != '0' ) { return $_POST['comment_parent']; }
-        return false;
+    public function reset_score_on_new($comment_id, $comment_approved, $commentdata) {
+        if ( $comment_approved !== 1 ) { return; }
+        $this->reset_total_score( $comment_id );
     }
+    public function reset_score_on_transit($new_status, $old_status, $comment) {
+        if ( $old_status !== 'approved' && $new_status !== 'approved' ) { return; }
+        $this->reset_total_score( $comment );
+    }
+    public function reset_total_score($comment) {
 
-    public static function can_reply($comment = '') { // doesn't extend, only limit the role capabilities
         $comment = self::comment_filter( $comment );
         if ( $comment === false ) { return false; }
 
-        if ( !$comment->comment_approved && !current_user_can('administrator') ) { return false; }
-        if ( (int) $comment->comment_parent !== 0 ) { return false; } // only the first lvl comment can be replied
-        if ( !current_user_can( 'edit_post', $comment->comment_post_ID ) ) { return false; }
+        $post_id = $comment->comment_post_ID;
 
-        return true;
-    }
-    
-    public static function can_edit($comment = '') { // doesn't extend, only limit the role capabilities
-        $comment = self::comment_filter( $comment );
-        if ( $comment === false ) { return false; }
+        update_post_meta( $post_id, 'cr_total_wtd', self::ratings_count( $post_id )['__total'] );
 
-        if ( current_user_can( 'administrator' ) ) { return true; }
-        if ( current_user_can( 'edit_comment', $comment->comment_ID ) && (int) $comment->user_id === get_current_user_id() ) { return true; }
-        
-        return false;
-    }
-
-    public static function can_moderate($comment = '') { // doesn't extend, only limit the role capabilities
-        if ( current_user_can( 'administrator' ) ) { return true; }
-        return false;
-    }
-
-    // check if the comment fits the post type, return $comment object or false
-    public static function comment_filter($comment = '') {
-
-        if ( $comment && is_numeric( $comment ) ) {
-            $comment = get_comment( $comment );
-            if ( !$comment || !is_object( $comment ) ) { return false; }
-        }
-
-        if ( !$comment || !is_object( $comment ) ) {
-            
-            if ( isset( $_GET['action'] ) && isset( $_GET['c'] ) ) { // filter the admin screens & get actions
-                $comment = get_comment( $_GET['c'] );
-            } elseif ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
-                $comment = get_comment( $_POST['comment_ID'] );
-            } else { // filter the front-end inside the comments loop
-                global $comment; // ++can just pass empty get_comment() to retrieve the global value - test it
-            }
-        }
-
-        if ( !$comment || !is_object( $comment ) ) { return false; }
-        if ( !isset( $comment->comment_post_ID ) ) { return false; }
-        
-        $post_type = get_post_type( $comment->comment_post_ID );
-        if ( !in_array( $post_type, self::$types ) ) { return false; }
-        return $comment;
-    }
-
-    private static function slug($name) {
-        static $store = [];
-
-        if ( $store[ $name ] ) { return $store[ $name ]; }
-
-        $store[ $name ] = self::$pr . sanitize_title( $name );
-        return $store[ $name ];
-    }
-
-    public static function access_denied($m = '', $t = '') {
-        wp_die( $m ? $m : 'Access denied', $t ? $t : 'Access denied', [ 'response' => 403, 'back_link' => true ] );    
     }
 
 //-----__--___-__--_______STATICS to print in templates -------___--_______-
@@ -413,10 +383,10 @@ class FCP_Comment_Rate {
             $remove = array_merge( $remove, ['reply'] );
         }
         if ( !self::can_edit() ) {
-            $remove = array_merge( $remove, ['edit', 'quickedit', 'trash', 'delete', 'spam', 'approve', 'unapprove'] );
+            $remove = array_merge( $remove, ['edit', 'quickedit', 'trash', 'delete', 'spam', 'unspam', 'approve', 'unapprove'] );
         }
         if ( !self::can_moderate() ) {
-            $remove = array_merge( $remove, ['spam', 'approve', 'unapprove'] );
+            $remove = array_merge( $remove, ['spam', 'unspam', 'approve', 'unapprove'] );
         }
 
         foreach ( $remove as $v ) { unset( $actions[ $v ] ); }
@@ -427,16 +397,15 @@ class FCP_Comment_Rate {
         if ( get_current_screen()->id !== 'comment' ) { return; }
         if ( self::can_edit() ) { return; }
         self::access_denied();
-        // ++self status is still present here
     }
     
-    public function hide_unapproved_comments() {
+    public function highlight_unapproved_comments() {
         if ( !in_array( get_current_screen()->id, ['clinic', 'doctor'] ) ) { return; }
         if ( self::can_moderate() ) { return; }
         add_action( 'admin_footer', function() { ?>
         <style>
             #the-comment-list .unapproved { opacity:0.6 }
-            #the-comment-list .unapproved > td:last-child::after {
+            #the-comment-list .unapproved > td:last-child::before {
                 content:'[<?php _e( 'Awaiting moderation', 'fcpcr' ); ?>]';
                 text-transform:uppercase;
             }
@@ -588,6 +557,81 @@ class FCP_Comment_Rate {
         ?><style>.cr_stars_bar{--star_height:<?php echo $height ?>%}.cr_fields{--star_size:<?php echo $wh_radio ?>%;}</style><?php
     }
 
+
+    // ************* functional
+
+    public static function is_replying() {
+        if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { return $_GET['replytocom']; }
+        if ( isset( $_POST['comment_parent'] ) && $_POST['comment_parent'] != '0' ) { return $_POST['comment_parent']; }
+        return false;
+    }
+
+    public static function can_reply($comment = '') { // doesn't extend, only limit the role capabilities
+        $comment = self::comment_filter( $comment );
+        if ( $comment === false ) { return false; }
+
+        if ( !$comment->comment_approved && !current_user_can('administrator') ) { return false; }
+        if ( (int) $comment->comment_parent !== 0 ) { return false; } // only the first lvl comment can be replied
+        if ( !current_user_can( 'edit_post', $comment->comment_post_ID ) ) { return false; }
+
+        return true;
+    }
+    
+    public static function can_edit($comment = '') { // doesn't extend, only limit the role capabilities
+        $comment = self::comment_filter( $comment );
+        if ( $comment === false ) { return false; }
+
+        if ( current_user_can( 'administrator' ) ) { return true; }
+        if ( current_user_can( 'edit_comment', $comment->comment_ID ) && (int) $comment->user_id === get_current_user_id() ) { return true; }
+        
+        return false;
+    }
+
+    public static function can_moderate($comment = '') {
+        if ( current_user_can( 'administrator' ) ) { return true; }
+        return false;
+    }
+
+    // check if the comment fits the post type, return $comment object or false
+    public static function comment_filter($comment = '') {
+
+        if ( $comment && is_numeric( $comment ) ) {
+            $comment = get_comment( $comment );
+            if ( !$comment || !is_object( $comment ) ) { return false; }
+        }
+
+        if ( !$comment || !is_object( $comment ) ) {
+            
+            if ( isset( $_GET['action'] ) && isset( $_GET['c'] ) ) { // filter the admin screens & get actions
+                $comment = get_comment( $_GET['c'] );
+            } elseif ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
+                $comment = get_comment( $_POST['comment_ID'] );
+            } else { // filter the front-end inside the comments loop
+                global $comment; // ++can just pass empty get_comment() to retrieve the global value - test it
+            }
+        }
+
+        if ( !$comment || !is_object( $comment ) ) { return false; } //++ || !WP_Comment object
+        if ( !isset( $comment->comment_post_ID ) ) { return false; }
+        
+        $post_type = get_post_type( $comment->comment_post_ID );
+        if ( !in_array( $post_type, self::$types ) ) { return false; }
+        return $comment;
+    }
+
+    private static function slug($name) {
+        static $store = [];
+
+        if ( $store[ $name ] ) { return $store[ $name ]; }
+
+        $store[ $name ] = self::$pr . sanitize_title( $name );
+        return $store[ $name ];
+    }
+
+    public static function access_denied($m = '', $t = '') {
+        wp_die( $m ? $m : 'Access denied', $t ? $t : 'Access denied', [ 'response' => 403, 'back_link' => true ] );    
+    }
+
 }
 
 new FCP_Comment_Rate();
@@ -613,50 +657,3 @@ new FCP_Comment_Rate();
     // and overall filter to nothing
 // a redirect from dashboard doesn't work any more? Or I can just keep it?
 // styles for not approved comments don't losd - maybe the issue is in the theme
-
-/*
-    public function hide_comments_actions_() { // ++ajax actions are still intact :( ++ try using transition_comment_status hook maybe or the hooks, which are used for function reset_total_score()!!
-    // ++try using 
-        if ( !isset( $_GET['action'] ) && !isset( $_POST['action'] ) ) { return; }
-
-        if ( !self::can_reply() ) {
-        
-            $forbidden_post_actions = [
-                'replyto-comment'
-            ];
-
-            if ( isset( $_POST['action'] ) && in_array( $_POST['action'], $forbidden_post_actions ) ) {
-                die( 'Access denied' );
-            }
-        }
-        
-        if ( !self::can_edit() ) {
-
-            $forbidden_get_actions = [
-                'approvecomment',
-                'unapprovecomment',
-                'editcomment',
-                'spamcomment',
-                'trashcomment'
-            ];
-            
-            $forbidden_post_actions = [
-                'edit-comment', // quic edit
-                'editedcomment' // the edit interface
-            ];
-
-            if ( isset( $_GET['action'] ) && in_array( $_GET['action'], $forbidden_get_actions ) ) {
-                die( 'Access denied' );
-            }
-
-            if ( isset( $_POST['action'] ) && in_array( $_POST['action'], $forbidden_post_actions ) ) {
-                die( 'Access denied' );
-            }
-        }
-    }
-    
-    public static function can_post_a_reply() { // get && ++post?? ++--!!
-        if ( current_user_can( 'edit_post' ) ) { return true; } // page author & admin
-        return false;
-    }
-//*/
