@@ -110,7 +110,7 @@ class FCP_Comment_Rate {
 
         // limit operations
         add_action( 'transition_comment_status', [$this, 'limit_status_change'], 10, 3 );
-        add_filter( 'preprocess_comment', [$this, 'filter_reply'] ); // hook works for now comments only
+        add_filter( 'preprocess_comment', [$this, 'filter_reply'] );
         add_filter( 'wp_update_comment_data', [$this, 'filter_edit'], 10, 3 );
 
 
@@ -128,14 +128,31 @@ class FCP_Comment_Rate {
     // ************* operations with comments to limit
 
     public function limit_status_change($new_status, $old_status, $comment) {
-        $comment = self::comment_filter( $comment );
-        if ( $comment === false ) { self::access_denied(); }
-        
-        if ( !self::can_moderate() && in_array( $new_status, ['spammed', 'unspammed', 'approved', 'unapproved'] ) ) {
+
+        // the transition hook runs after save, so gotta restore the initial status instead of just forbidding
+        $restore_status = function() use ( $comment, $old_status ) {
+            global $wpdb;
+            $statuses = [
+                'approved' => '1',
+                'unapproved' => '0',
+                'spam' => 'spam',
+                'trash' => 'trash',
+            ];
+
+            $wpdb->update( // because wp_update_comment() works earlier
+                $wpdb->comments,
+                [ 'comment_approved' => $statuses[ $old_status ] ],
+                [ 'comment_ID' => $comment->comment_ID ]
+            );
+
             self::access_denied();
+        };
+
+        if ( !self::can_moderate() && in_array( $new_status, ['approved', 'unapproved', 'spam'] ) ) {
+            $restore_status();
         }
-        if ( !self::can_edit( $comment ) && in_array( $new_status, ['trashed', 'untrashed'] ) ) {
-            self::access_denied();
+        if ( !self::can_edit( $comment ) && in_array( $new_status, ['trash'] ) ) {
+            $restore_status();
         }
     }
     
@@ -375,7 +392,7 @@ class FCP_Comment_Rate {
     // ************* wp-admin printing limitations
 
     public function hide_comments_actions_links($actions) {
-
+fct1_log( $actions, __DIR__ );
         if ( self::comment_filter() === false ) { return $actions; }
 
         $remove = []; // actions to remove
@@ -383,10 +400,10 @@ class FCP_Comment_Rate {
             $remove = array_merge( $remove, ['reply'] );
         }
         if ( !self::can_edit() ) {
-            $remove = array_merge( $remove, ['edit', 'quickedit', 'trash', 'delete', 'spam', 'unspam', 'approve', 'unapprove'] );
+            $remove = array_merge( $remove, ['edit', 'quickedit', 'trash', 'delete', 'spam', 'approve', 'unapprove'] );
         }
         if ( !self::can_moderate() ) {
-            $remove = array_merge( $remove, ['spam', 'unspam', 'approve', 'unapprove'] );
+            $remove = array_merge( $remove, ['spam', 'approve', 'unapprove'] );
         }
 
         foreach ( $remove as $v ) { unset( $actions[ $v ] ); }
@@ -406,7 +423,8 @@ class FCP_Comment_Rate {
         <style>
             #the-comment-list .unapproved { opacity:0.6 }
             #the-comment-list .unapproved > td:last-child::before {
-                content:'[<?php _e( 'Awaiting moderation', 'fcpcr' ); ?>]';
+                content:'[<?php _e( 'Awaiting moderation', 'fcpcr' ); ?>]\a';
+                white-space:pre;
                 text-transform:uppercase;
             }
         </style>
