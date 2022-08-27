@@ -2,7 +2,7 @@
 /*
 Plugin Name: Comment and Rate
 Description: Adds custom rating fields to a particular post type's comments
-Version: 0.1.1
+Version: 2.0.0
 Requires at least: 4.7
 Requires PHP: 5.2.4
 Author: Firmcatalyst, Vadim Volkov
@@ -209,183 +209,8 @@ class FCP_Comment_Rate {
 
         $post_id = $comment->comment_post_ID;
 
-        update_post_meta( $post_id, 'cr_total_wtd', self::ratings_count( $post_id )['__total'] );
+        update_post_meta( $post_id, 'cr_total_wtd', self::count_all( $post_id )['__rating'] );
 
-    }
-
-//-----__--___-__--_______STATICS to print in templates -------___--_______-
-
-    public static function nominations_layout($competencies) {
-        foreach ( self::$competencies as $v ) {
-            $slug = self::slug( $v );
-            if ( !$competencies[ $slug ] ) {
-                continue;
-            }
-            ?>
-            <div class="<?php echo self::$pr ?>nomination">
-                <div class="<?php echo self::$pr ?>wrap">
-                    <div class="<?php echo self::$pr ?>headline"><?php _e( $v, 'fcpcr' ) ?></div>
-                    <?php self::stars_layout( $competencies[ $slug ] ) ?>
-                </div>
-            </div>
-            <?php
-        }
-    }
-
-    public static function stars_layout($stars = 0) {
-
-        //if ( !$stars) { return; }
-    
-        $stars = $stars > self::$stars ? self::$stars : $stars;
-        $width = round( $stars / self::$stars * 100, 5 );
-        
-        ?>
-        <div class="<?php echo self::$pr ?>stars_bar">
-            <div style="width:<?php echo $width ?>%"></div>
-        </div>
-        <?php
-    }
-
-    public static function ratings_count($id = 0) {
-
-        if ( !$id ) $id = get_the_ID();
-    
-        $comments = get_approved_comments( $id );
-
-        if ( !$comments ) { return; }
-        
-        $a = [
-            'per_nomination_sum' => [], // total per nomination
-            'not_zero_stars_amo' => [], // number of rated comments by nomination with stars > 0 (aka filled)
-            'per_nomination_avg' => [], // total / filled
-            'cast_weights' => [],
-            'per_nomination_wtd' => [], // avg * casted weight
-            'not_zero_ratings_amo' => 0, // <= count( self::$competencies )
-            'total_avg' => 0,
-            'total_wtd' => 0,
-        ];
-
-        // fetch ratings
-        foreach ( self::$competencies as $v ) {
-            $slug = self::slug( $v );
-
-            $a['per_nomination_sum'][ $slug ] = 0;
-            $a['not_zero_stars_amo'][ $slug ] = 0;
-
-            foreach ( $comments as $comment ) {       
-                $stars = get_comment_meta( $comment->comment_ID, $slug, true );
-
-                if ( !$stars ) { continue; }
-
-                $a['per_nomination_sum'][ $slug ] += (int) $stars > self::$stars ? self::$stars : (int) $stars;
-                $a['not_zero_stars_amo'][ $slug ]++;
-            }
-        }
-
-        // counting avgs weighted and totals
-        foreach ( self::$competencies as $k => $v ) {
-            $slug = self::slug( $v );
-
-            $a['per_nomination_avg'][ $slug ] = $a['not_zero_stars_amo'][ $slug ] ?
-                $a['per_nomination_sum'][ $slug ] / $a['not_zero_stars_amo'][ $slug ] :
-                0;
-                
-            // cast weights
-            $a['per_nomination_wtd'][ $slug ] = $a['per_nomination_avg'][ $slug ];
-
-            if ( isset( self::$weights ) && count( self::$weights ) === count( self::$competencies ) ) {
-
-                $a['cast_weights'][ $k ] = 
-                    self::$weights[ $k ] * count( self::$competencies ) / array_sum( self::$weights );
-                    
-                $a['per_nomination_wtd'][ $slug ] =
-                    $a['per_nomination_avg'][ $slug ] * $a['cast_weights'][ $k ];
-            }
-            
-            if ( $a['not_zero_stars_amo'][ $slug ] ) {
-                $a['not_zero_ratings_amo']++;
-            }
-
-        }
-
-        $a['total_avg'] = $a['not_zero_ratings_amo'] ?
-            array_sum( $a['per_nomination_avg'] ) / $a['not_zero_ratings_amo'] :
-            0;
-        $a['total_wtd'] = $a['not_zero_ratings_amo'] ?
-            array_sum( $a['per_nomination_wtd'] ) / $a['not_zero_ratings_amo'] :
-            0;
-
-        $result = $a['per_nomination_wtd'];
-        $result['__total'] = $a['total_wtd'];
-        $result['__count'] = max( array_values( $a['not_zero_stars_amo'] ) );
-
-        foreach( $result as &$v ) {
-            $v = round( $v, 5 );
-        }
-
-        return $result;
-    }
-
-
-    public static function print_rating_summary() {
-        $competencies = self::ratings_count();
-        ?>
-        <div class="<?php echo self::$pr ?>summary-headline">
-            <?php _e( 'Reviews', 'fcpcr' ) ?> (<?php echo get_comments_number() ?>)
-        </div>
-        <div class="<?php echo self::$pr ?>summary-total">
-        <?php self::stars_layout( $competencies['__total'] ) ?>
-        <?php echo $competencies['__total'] ? number_format( round( $competencies['__total'], 1 ), 1, ',', '' ) : '' ?>
-        </div>
-        <?php self::nominations_layout( $competencies ) ?>
-        <?php
-        self::style_summary();
-    }
-
-    public static function print_rating_summary_short() {
-
-        $competencies = self::ratings_count();
-        if ( !$competencies ) { return; }
-
-        if ( $competencies['__total'] && self::$schema ) {
-            self::print_rating_summary_short_schema($competencies);
-            return;
-        }
-
-        self::print_rating_summary_short_schema($competencies);
-    }
-    
-    private static function print_rating_summary_short_noschema($competencies) {
-        ?>
-        <div class="<?php echo self::$pr ?>summary-total">
-            <?php self::stars_layout( $competencies['__total'] ) ?>
-            <?php
-            echo $competencies['__total'] ?
-            '<span>'.number_format( round( $competencies['__total'], 1 ), 1, ',', '' ).'</span>' :
-            '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>';
-            ?>
-        </div>
-        <?php
-    }
-    
-    private static function print_rating_summary_short_schema($competencies) {
-        ?>
-        <div class="<?php echo self::$pr ?>summary-total" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
-            <?php self::stars_layout( $competencies['__total'] ) ?>
-            <?php
-            echo $competencies['__total'] ?
-            '<span itemprop="ratingValue">'.number_format( round( $competencies['__total'], 1 ), 1, ',', '' ).'</span>' :
-            '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>';
-            ?>
-            <meta itemprop="ratingCount" content="<?php echo $competencies['__count'] ?>">
-        </div>
-        <?php
-    }
-    
-    public static function print_stars_total() {
-        $total = self::ratings_count()['__total'];
-        if ( !$total ) { return; }
-        self::stars_layout( $total ); // ++just add option to hide if zero
     }
 
 
@@ -558,16 +383,12 @@ fct1_log( $actions, __DIR__ );
     public function style_comments() {
         wp_enqueue_style( self::$pr . 'stars-comments', plugins_url( '/', __FILE__ ) . 'assets/comments.css', [], self::ver() );
     }
-    public static function style_summary() {
-        static $styles_printed;
-        if ( $styles_printed ) { return; }
-        $styles_printed = true;
+    public static function style_inline($slug) {
+        static $printed_once; if ( $printed_once[$slug] ) { return; } $printed_once[$slug] = true;
         echo '<style>';
-        include_once __DIR__ . '/assets/summary.css';  //++not like that, include along with the shortcode or the method()
-        include_once __DIR__ . '/assets/fs-stars.css';  //++not like that, include along --||--
+        include_once __DIR__ . '/assets/fs-' . $slug . '.css';
         echo '</style>';
     }
-
     public function style_sizes() {
         $width = round( 100 / ( self::$stars - 1 + self::$proportions ), 3 );
         $height = round( $width * self::$proportions, 3 );
@@ -648,6 +469,235 @@ fct1_log( $actions, __DIR__ );
 
     public static function access_denied($m = '', $t = '') {
         wp_die( $m ? $m : 'Access denied', $t ? $t : 'Access denied', [ 'response' => 403, 'back_link' => true ] );    
+    }
+
+
+    // ************* counting
+
+    public static function count_all($id = 0) {
+
+        if ( !$id ) $id = get_the_ID();
+    
+        $comments = get_approved_comments( $id );
+
+        if ( !$comments ) { return; }
+        
+        $a = [
+            'per_nomination_sum' => [], // total per nomination
+            'not_zero_stars_amo' => [], // number of rated comments by nomination with stars > 0 (aka filled)
+            'per_nomination_avg' => [], // total / filled
+            'cast_weights' => [],
+            'per_nomination_wtd' => [], // avg * casted weight
+            'not_zero_ratings_amo' => 0, // <= count( self::$competencies )
+            'total_avg' => 0,
+            'total_wtd' => 0,
+        ];
+
+        // fetch ratings
+        foreach ( self::$competencies as $v ) {
+            $slug = self::slug( $v );
+
+            $a['per_nomination_sum'][ $slug ] = 0;
+            $a['not_zero_stars_amo'][ $slug ] = 0;
+
+            foreach ( $comments as $comment ) {       
+                $stars = get_comment_meta( $comment->comment_ID, $slug, true );
+
+                if ( !$stars ) { continue; }
+
+                $a['per_nomination_sum'][ $slug ] += (int) $stars > self::$stars ? self::$stars : (int) $stars;
+                $a['not_zero_stars_amo'][ $slug ]++;
+            }
+        }
+
+        // counting avgs weighted and totals
+        foreach ( self::$competencies as $k => $v ) {
+            $slug = self::slug( $v );
+
+            $a['per_nomination_avg'][ $slug ] = $a['not_zero_stars_amo'][ $slug ] ?
+                $a['per_nomination_sum'][ $slug ] / $a['not_zero_stars_amo'][ $slug ] :
+                0;
+                
+            // cast weights
+            $a['per_nomination_wtd'][ $slug ] = $a['per_nomination_avg'][ $slug ];
+
+            if ( isset( self::$weights ) && count( self::$weights ) === count( self::$competencies ) ) {
+
+                $a['cast_weights'][ $k ] = 
+                    self::$weights[ $k ] * count( self::$competencies ) / array_sum( self::$weights );
+                    
+                $a['per_nomination_wtd'][ $slug ] =
+                    $a['per_nomination_avg'][ $slug ] * $a['cast_weights'][ $k ];
+            }
+            
+            if ( $a['not_zero_stars_amo'][ $slug ] ) {
+                $a['not_zero_ratings_amo']++;
+            }
+
+        }
+
+        $a['total_avg'] = $a['not_zero_ratings_amo'] ?
+            array_sum( $a['per_nomination_avg'] ) / $a['not_zero_ratings_amo'] :
+            0;
+        $a['total_wtd'] = $a['not_zero_ratings_amo'] ?
+            array_sum( $a['per_nomination_wtd'] ) / $a['not_zero_ratings_amo'] :
+            0;
+
+        $result = $a['per_nomination_wtd'];
+        $result['__rating'] = $a['total_wtd'];
+        $result['__rated_reviews'] = max( array_values( $a['not_zero_stars_amo'] ) );
+
+        foreach( $result as &$v ) {
+            $v = round( $v, 5 );
+        }
+
+        return $result;
+    }
+
+    // ************* printing functions
+
+    public function stars_n_rating_print() {
+
+        self::style_inline( 'rating-short' );
+
+        $all = self::count_all();
+
+        if ( !$all || !$all['__rating'] ) {
+            self::rating_short_layout_empty();
+            return;
+        }
+
+        if ( self::$schema ) {
+            self::rating_short_layout_schema( $all['__rating'], $all['__rated_reviews'] );
+            return;
+        }
+
+        self::rating_short_layout( $all['__rating'] );
+    }
+
+
+    // ************* layouts
+    // ++move other printing functions' parts from above here
+    
+    public static function stars_layout($stars = 0) {
+
+        self::style_inline( 'stars' );
+
+        $stars = $stars && $stars > self::$stars ? self::$stars : $stars;
+        $width = round( $stars / self::$stars * 100, 5 );
+
+        ?>
+        <div class="<?php echo self::$pr ?>stars_bar">
+            <div style="width:<?php echo $width ?>%"></div>
+        </div>
+        <?php
+    }
+
+    private static function rating_short_layout($rating) {
+        ?>
+        <div class="<?php echo self::$pr ?>rating-short">
+            <?php self::stars_layout( $rating ) ?>
+            <?php echo '<span>' . number_format( round( $rating, 1 ), 1, ',', '' ) . '</span>' ?>
+        </div>
+        <?php
+    }
+
+    private static function rating_short_layout_schema($rating, $rated_reviews) {
+        ?>
+        <div class="<?php echo self::$pr ?>rating-short" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
+            <?php self::stars_layout( $rating ) ?>
+            <?php echo '<span itemprop="ratingValue">' . number_format( round( $rating, 1 ), 1, ',', '' ) . '</span>' ?>
+            <meta itemprop="ratingCount" content="<?php echo $rated_reviews ?>">
+        </div>
+        <?php
+    }
+
+    private static function rating_short_layout_empty() {
+        ?>
+        <div class="<?php echo self::$pr ?>rating-short">
+            <?php //self::stars_layout() ?>
+            <?php echo '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>' ?>
+        </div>
+        <?php
+    }
+
+    public static function nominations_layout($competencies) {
+        foreach ( self::$competencies as $v ) {
+            $slug = self::slug( $v );
+            if ( !$competencies[ $slug ] ) {
+                continue;
+            }
+            ?>
+            <div class="<?php echo self::$pr ?>nomination">
+                <div class="<?php echo self::$pr ?>wrap">
+                    <div class="<?php echo self::$pr ?>headline"><?php _e( $v, 'fcpcr' ) ?></div>
+                    <?php self::stars_layout( $competencies[ $slug ] ) ?>
+                </div>
+            </div>
+            <?php
+        }
+    }
+
+
+    public static function print_rating_summary() {
+        $competencies = self::count_all();
+        ?>
+        <div class="<?php echo self::$pr ?>summary-headline">
+            <?php _e( 'Reviews', 'fcpcr' ) ?> (<?php echo get_comments_number() ?>)
+        </div>
+        <div class="<?php echo self::$pr ?>rating-short">
+        <?php self::stars_layout( $competencies['__rating'] ) ?>
+        <?php echo $competencies['__rating'] ? number_format( round( $competencies['__rating'], 1 ), 1, ',', '' ) : '' ?>
+        </div>
+        <?php self::nominations_layout( $competencies ) ?>
+        <?php
+        self::style_inline( 'summary' );
+    }
+
+    public static function print_rating_summary_short() {
+
+        $competencies = self::count_all();
+        if ( !$competencies ) { return; }
+
+        if ( $competencies['__rating'] && self::$schema ) {
+            self::print_rating_summary_short_schema($competencies);
+            return;
+        }
+
+        self::print_rating_summary_short_schema($competencies);
+    }
+    
+    private static function print_rating_summary_short_noschema($competencies) {
+        ?>
+        <div class="<?php echo self::$pr ?>rating-short">
+            <?php self::stars_layout( $competencies['__rating'] ) ?>
+            <?php
+            echo $competencies['__rating'] ?
+            '<span>'.number_format( round( $competencies['__rating'], 1 ), 1, ',', '' ).'</span>' :
+            '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>';
+            ?>
+        </div>
+        <?php
+    }
+    
+    private static function print_rating_summary_short_schema($competencies) {
+        ?>
+        <div class="<?php echo self::$pr ?>rating-short" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
+            <?php self::stars_layout( $competencies['__rating'] ) ?>
+            <?php
+            echo $competencies['__rating'] ?
+            '<span itemprop="ratingValue">'.number_format( round( $competencies['__rating'], 1 ), 1, ',', '' ).'</span>' :
+            '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>';
+            ?>
+            <meta itemprop="ratingCount" content="<?php echo $competencies['__rated_reviews'] ?>">
+        </div>
+        <?php
+    }
+    
+    public static function print_stars_total() {
+        $total = self::count_all()['__rating'];
+        if ( !$total ) { return; }
+        self::stars_layout( $total ); // ++just add option to hide if zero
     }
 
 }

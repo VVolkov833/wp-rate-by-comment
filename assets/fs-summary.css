@@ -6,24 +6,6 @@
     text-transform:uppercase;
     color:var(--h-color);
 }
-.cr_summary-total {
-    display:flex;
-    justify-content:flex-start;
-    align-items:center;
-    font-size:26px;
-    font-weight:700;
-    text-transform:uppercase;
-    color:var(--h-color);
-}
-.cr_summary-total > * {
-    flex:1;
-}
-.cr_summary-total .cr_stars_bar {
-    max-width:160px;
-    margin-right:20px;
-}
-
-
 .cr_nomination .cr_wrap {
     display:flex;
     justify-content:space-between;
