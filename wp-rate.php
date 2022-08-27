@@ -60,7 +60,7 @@ class FCP_Comment_Rate {
                 $this->form_layout_change();
                 if ( !self::is_replying() ) {
                     $this->draw_main_fields_wrapper();
-                    add_action( 'comment_form', [$this, 'draw_rating_fields'] );
+                    add_action( 'comment_form', [$this, 'rating_fields_layout'] );
                 }
             }
 
@@ -90,7 +90,7 @@ class FCP_Comment_Rate {
             if ( get_comments_number() || $_GET['unapproved'] ) {
                 add_action( 'wp_enqueue_scripts', [$this, 'style_comments'] );
             }
-            add_action( 'wp_head', [$this, 'style_sizes'] );
+            add_action( 'wp_head', [$this, 'style_inline_sizes'] );
 
         });
 
@@ -217,7 +217,7 @@ class FCP_Comment_Rate {
     // ************* wp-admin printing limitations
 
     public function hide_comments_actions_links($actions) {
-fct1_log( $actions, __DIR__ );
+
         if ( self::comment_filter() === false ) { return $actions; }
 
         $remove = []; // actions to remove
@@ -271,14 +271,7 @@ fct1_log( $actions, __DIR__ );
 
         $comment_stars_wrap_layout = function($title, $stars) {
             ob_start();
-            
-            ?>
-            <div class="<?php echo self::$pr ?>wrap">
-                <div class="<?php echo self::$pr ?>headline"><?php _e( $title, 'fcpcr' ) ?></div>
-                <?php self::stars_layout( $stars ) ?>
-            </div>
-            <?php
-            
+            self::comment_rating_layout( $title, $stars );
             $content = ob_get_contents();
             ob_end_clean();
             return $content;
@@ -349,31 +342,6 @@ fct1_log( $actions, __DIR__ );
         });
     }
 
-    public function draw_rating_fields($a) {
-        ?>
-        <div class="<?php echo self::$pr ?>fields wp-block-column" style="flex-basis:33.33%">
-        <?php
-            foreach ( self::$competencies as $v ) {
-                $slug = self::slug( $v );
-        ?>
-            <fieldset class="<?php echo self::$pr ?>wrap">
-                <legend><?php _e( $v, 'fcpcr' ) ?></legend>
-                <div class="<?php echo self::$pr ?>radio_bar">
-                <?php for ( $i = self::$stars; $i > 0; $i-- ) { ?>
-                    <input type="radio"
-                        id="<?php echo $slug . $i ?>"
-                        name="<?php echo $slug ?>"
-                        value="<?php echo $i ?>"
-                    />
-                    <label for="<?php echo $slug . $i ?>" title="<?php echo $i ?>"></label>
-                <?php } ?>
-                </div>
-            </fieldset>
-        <?php } ?>
-        </div>
-        <?php
-    }
-
 
     // ************* styles functions
 
@@ -384,12 +352,13 @@ fct1_log( $actions, __DIR__ );
         wp_enqueue_style( self::$pr . 'stars-comments', plugins_url( '/', __FILE__ ) . 'assets/comments.css', [], self::ver() );
     }
     public static function style_inline($slug) {
-        static $printed_once; if ( $printed_once[$slug] ) { return; } $printed_once[$slug] = true;
+        static $printed_once = []; if ( $printed_once[ $slug ] ) { return; } $printed_once[ $slug ] = true;
         echo '<style>';
+        echo "\n" . '/* wp-rate ' . $slug . ' */' . "\n";
         include_once __DIR__ . '/assets/fs-' . $slug . '.css';
         echo '</style>';
     }
-    public function style_sizes() {
+    public function style_inline_sizes() {
         $width = round( 100 / ( self::$stars - 1 + self::$proportions ), 3 );
         $height = round( $width * self::$proportions, 3 );
         $wh_radio = round( 100 / self::$stars, 5 );
@@ -475,12 +444,13 @@ fct1_log( $actions, __DIR__ );
     // ************* counting
 
     public static function count_all($id = 0) {
+        static $counted = []; if ( $counted[ $id ] ) { return $counted[ $id ]; }
 
         if ( !$id ) $id = get_the_ID();
     
         $comments = get_approved_comments( $id );
 
-        if ( !$comments ) { return; }
+        if ( !$comments ) { $counted[ $id ] = false; return $counted[ $id ]; }
         
         $a = [
             'per_nomination_sum' => [], // total per nomination
@@ -551,41 +521,69 @@ fct1_log( $actions, __DIR__ );
             $v = round( $v, 5 );
         }
 
-        return $result;
+        $counted[ $id ] = $result;
+        return $counted[ $id ];
     }
+
 
     // ************* printing functions
 
-    public function stars_n_rating_print() {
-
+    public static function stars_n_rating_print() {
         self::style_inline( 'rating-short' );
-
-        $all = self::count_all();
-
-        if ( !$all || !$all['__rating'] ) {
+        $stats = self::count_all();
+        if ( !$stats || !$stats['__rating'] ) {
             self::rating_short_layout_empty();
             return;
         }
-
         if ( self::$schema ) {
-            self::rating_short_layout_schema( $all['__rating'], $all['__rated_reviews'] );
+            self::rating_short_layout_schema( $stats['__rating'], $stats['__rated_reviews'] );
             return;
         }
+        self::rating_short_layout( $stats['__rating'] );
+    }
 
-        self::rating_short_layout( $all['__rating'] );
+    public static function stars_total_print() {
+        $stats = self::count_all();
+        if ( !$stats || !$stats['__rating'] ) { return; }
+        self::stars_print( $stats['__rating'] );
+    }
+
+    public static function summary_print() {
+        self::style_inline( 'summary' );
+        $stats = self::count_all();
+        $count = get_comments([ // count the first lvl comments with and without score
+            'post_id' => get_the_ID(),
+            'status' => 'approve',
+            'hierarchical' => 'threaded', // count only first lvl
+            'count' => true, // return only the count
+        ]);
+        //$count = $stats['__rated_reviews']; // if only reviews with score gotta be shown
+        self::summary_layout( $stats['__rating'], $count );
+    }
+    
+    private static function competences_print() {
+        $stats = self::count_all();
+        if ( !$stats ) { return; }
+        foreach ( self::$competencies as $v ) {
+            $slug = self::slug( $v );
+            if ( !$stats[ $slug ] ) {
+                continue;
+            }
+            self::competence_layout( $v, $stats[ $slug ] );
+        }
+    }
+    
+    public static function stars_print($stars = 0) {
+        self::style_inline( 'stars' );
+        $stars = $stars && $stars > self::$stars ? self::$stars : $stars;
+        $width = round( $stars / self::$stars * 100, 5 );
+        self::stars_layout( $width );
     }
 
 
     // ************* layouts
-    // ++move other printing functions' parts from above here
     
-    public static function stars_layout($stars = 0) {
-
-        self::style_inline( 'stars' );
-
-        $stars = $stars && $stars > self::$stars ? self::$stars : $stars;
-        $width = round( $stars / self::$stars * 100, 5 );
-
+    private static function stars_layout($width = 0) {
         ?>
         <div class="<?php echo self::$pr ?>stars_bar">
             <div style="width:<?php echo $width ?>%"></div>
@@ -593,10 +591,21 @@ fct1_log( $actions, __DIR__ );
         <?php
     }
 
+    private static function competence_layout($title, $stars) {
+        ?>
+        <div class="<?php echo self::$pr ?>nomination">
+            <div class="<?php echo self::$pr ?>wrap">
+                <div class="<?php echo self::$pr ?>headline"><?php _e( $title, 'fcpcr' ) ?></div>
+                <?php self::stars_print( $stars ) ?>
+            </div>
+        </div>
+        <?php
+    }
+
     private static function rating_short_layout($rating) {
         ?>
         <div class="<?php echo self::$pr ?>rating-short">
-            <?php self::stars_layout( $rating ) ?>
+            <?php self::stars_print( $rating ) ?>
             <?php echo '<span>' . number_format( round( $rating, 1 ), 1, ',', '' ) . '</span>' ?>
         </div>
         <?php
@@ -605,7 +614,7 @@ fct1_log( $actions, __DIR__ );
     private static function rating_short_layout_schema($rating, $rated_reviews) {
         ?>
         <div class="<?php echo self::$pr ?>rating-short" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
-            <?php self::stars_layout( $rating ) ?>
+            <?php self::stars_print( $rating ) ?>
             <?php echo '<span itemprop="ratingValue">' . number_format( round( $rating, 1 ), 1, ',', '' ) . '</span>' ?>
             <meta itemprop="ratingCount" content="<?php echo $rated_reviews ?>">
         </div>
@@ -615,89 +624,58 @@ fct1_log( $actions, __DIR__ );
     private static function rating_short_layout_empty() {
         ?>
         <div class="<?php echo self::$pr ?>rating-short">
-            <?php //self::stars_layout() ?>
+            <?php //self::stars_print() ?>
             <?php echo '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>' ?>
         </div>
         <?php
     }
 
-    public static function nominations_layout($competencies) {
-        foreach ( self::$competencies as $v ) {
-            $slug = self::slug( $v );
-            if ( !$competencies[ $slug ] ) {
-                continue;
-            }
-            ?>
-            <div class="<?php echo self::$pr ?>nomination">
-                <div class="<?php echo self::$pr ?>wrap">
-                    <div class="<?php echo self::$pr ?>headline"><?php _e( $v, 'fcpcr' ) ?></div>
-                    <?php self::stars_layout( $competencies[ $slug ] ) ?>
-                </div>
-            </div>
-            <?php
-        }
-    }
-
-
-    public static function print_rating_summary() {
-        $competencies = self::count_all();
+    private static function summary_layout($rating, $reviews) {
         ?>
         <div class="<?php echo self::$pr ?>summary-headline">
-            <?php _e( 'Reviews', 'fcpcr' ) ?> (<?php echo get_comments_number() ?>)
+            <?php _e( 'Reviews', 'fcpcr' ) ?> (<?php echo $reviews ?>)
         </div>
         <div class="<?php echo self::$pr ?>rating-short">
-        <?php self::stars_layout( $competencies['__rating'] ) ?>
-        <?php echo $competencies['__rating'] ? number_format( round( $competencies['__rating'], 1 ), 1, ',', '' ) : '' ?>
+            <?php self::stars_print( $rating ) ?>
         </div>
-        <?php self::nominations_layout( $competencies ) ?>
+        <?php self::competences_print() ?>
         <?php
-        self::style_inline( 'summary' );
-    }
-
-    public static function print_rating_summary_short() {
-
-        $competencies = self::count_all();
-        if ( !$competencies ) { return; }
-
-        if ( $competencies['__rating'] && self::$schema ) {
-            self::print_rating_summary_short_schema($competencies);
-            return;
-        }
-
-        self::print_rating_summary_short_schema($competencies);
     }
     
-    private static function print_rating_summary_short_noschema($competencies) {
+    private function comment_rating_layout($title, $stars) {
         ?>
-        <div class="<?php echo self::$pr ?>rating-short">
-            <?php self::stars_layout( $competencies['__rating'] ) ?>
-            <?php
-            echo $competencies['__rating'] ?
-            '<span>'.number_format( round( $competencies['__rating'], 1 ), 1, ',', '' ).'</span>' :
-            '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>';
-            ?>
+        <div class="<?php echo self::$pr ?>wrap">
+            <div class="<?php echo self::$pr ?>headline"><?php _e( $title, 'fcpcr' ) ?></div>
+            <?php self::stars_print( $stars ) ?>
         </div>
         <?php
     }
     
-    private static function print_rating_summary_short_schema($competencies) {
+    
+    // the form fields layout gotta be public and not static
+    public function rating_fields_layout() {
         ?>
-        <div class="<?php echo self::$pr ?>rating-short" itemprop="aggregateRating" itemscope itemtype="https://schema.org/AggregateRating">
-            <?php self::stars_layout( $competencies['__rating'] ) ?>
-            <?php
-            echo $competencies['__rating'] ?
-            '<span itemprop="ratingValue">'.number_format( round( $competencies['__rating'], 1 ), 1, ',', '' ).'</span>' :
-            '<span>'.__( 'Not rated yet', 'fcpcr' ).'</span>';
-            ?>
-            <meta itemprop="ratingCount" content="<?php echo $competencies['__rated_reviews'] ?>">
+        <div class="<?php echo self::$pr ?>fields wp-block-column" style="flex-basis:33.33%">
+        <?php
+            foreach ( self::$competencies as $v ) {
+                $slug = self::slug( $v );
+        ?>
+            <fieldset class="<?php echo self::$pr ?>wrap">
+                <legend><?php _e( $v, 'fcpcr' ) ?></legend>
+                <div class="<?php echo self::$pr ?>radio_bar">
+                <?php for ( $i = self::$stars; $i > 0; $i-- ) { ?>
+                    <input type="radio"
+                        id="<?php echo $slug . $i ?>"
+                        name="<?php echo $slug ?>"
+                        value="<?php echo $i ?>"
+                    />
+                    <label for="<?php echo $slug . $i ?>" title="<?php echo $i ?>"></label>
+                <?php } ?>
+                </div>
+            </fieldset>
+        <?php } ?>
         </div>
         <?php
-    }
-    
-    public static function print_stars_total() {
-        $total = self::count_all()['__rating'];
-        if ( !$total ) { return; }
-        self::stars_layout( $total ); // ++just add option to hide if zero
     }
 
 }
