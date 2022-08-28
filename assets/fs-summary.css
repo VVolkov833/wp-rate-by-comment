@@ -1,4 +1,3 @@
-/* headline */
 .cr_summary-headline {
     margin:22px 0 10px;
     font-size:26px;
@@ -6,29 +5,29 @@
     text-transform:uppercase;
     color:var(--h-color);
 }
-.cr_nomination .cr_wrap {
+.cr_competence .cr_wrap {
     display:flex;
     justify-content:space-between;
     align-items:center;
     margin:20px 0 15px;
 }
-.cr_nomination .cr_wrap > * {
+.cr_competence .cr_wrap > * {
     flex:1;
 }
-.cr_nomination .cr_headline {
+.cr_competence .cr_headline {
     font-size:18px;
     font-weight:700;
     text-transform:uppercase;
     color:var(--h-color);
 }
-.cr_nomination .cr_stars_bar {
+.cr_competence .cr_stars_bar {
     max-width:130px;
 }
 @media (min-width:600px) and (max-width:991px) {
-    .cr_nomination .cr_wrap {
+    .cr_competence .cr_wrap {
         flex-wrap:wrap;
     }
-    .cr_nomination .cr_wrap > * {
+    .cr_competence .cr_wrap > * {
         flex:auto;
         width:100%;
         max-width:150px;

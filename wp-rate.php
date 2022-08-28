@@ -537,6 +537,7 @@ class FCP_Comment_Rate {
         }
         if ( self::$schema ) {
             self::rating_short_layout_schema( $stats['__rating'], $stats['__rated_reviews'] );
+            self::$schema = false; // print rating schema only once
             return;
         }
         self::rating_short_layout( $stats['__rating'] );
@@ -593,7 +594,7 @@ class FCP_Comment_Rate {
 
     private static function competence_layout($title, $stars) {
         ?>
-        <div class="<?php echo self::$pr ?>nomination">
+        <div class="<?php echo self::$pr ?>competence">
             <div class="<?php echo self::$pr ?>wrap">
                 <div class="<?php echo self::$pr ?>headline"><?php _e( $title, 'fcpcr' ) ?></div>
                 <?php self::stars_print( $stars ) ?>
@@ -635,9 +636,7 @@ class FCP_Comment_Rate {
         <div class="<?php echo self::$pr ?>summary-headline">
             <?php _e( 'Reviews', 'fcpcr' ) ?> (<?php echo $reviews ?>)
         </div>
-        <div class="<?php echo self::$pr ?>rating-short">
-            <?php self::stars_print( $rating ) ?>
-        </div>
+        <?php self::stars_n_rating_print() ?>
         <?php self::competences_print() ?>
         <?php
     }
@@ -682,24 +681,10 @@ class FCP_Comment_Rate {
 
 new FCP_Comment_Rate();
 
-// ++first screen css for stars
-/* the number of first lvl comments
-    $first_lvl_comments = get_comments([
-        'post_id' => get_the_ID(),
-        'status' => 'approve',
-        'hierarchical' => 'threaded', // count only first lvl
-        'count' => true, // return only the count
-    ]);
-//*/
-// ++change the message to ~only author and admin can reply the review ??
-// ++add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f ???
-// ++load the gutenberg styles if are not loaded on the page (columns layout)
-// .form-table.editcomment tr:nth-child(3) {display:none}
-// hide pingback checkbox too
-// ++edit the rating on the back-end https://wp-kama.ru/id_8342/kak-dobavit-proizvolnye-polya-v-formu-kommentariev-wordpress.html
-// change to private what can be changed
-// show the author only approved comments? or mark somehow more contrast
-// wp-admin reply has tags bar - remove
-    // and overall filter to nothing
-// a redirect from dashboard doesn't work any more? Or I can just keep it?
-// styles for not approved comments don't losd - maybe the issue is in the theme
+// add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f ???
+// load the gutenberg styles if are not loaded on the page (columns layout)? or make simple custom??
+// hide pingback checkbox and html formatting buttons and url.. and change url to nothing on post
+// forbid changing the name on reply?
+// forbid the author to review own entity
+// edit the rating on the back-end https://wp-kama.ru/id_8342/kak-dobavit-proizvolnye-polya-v-formu-kommentariev-wordpress.html
+// settings page https://wp-kama.ru/function/get_current_screen example 4
