@@ -202,7 +202,7 @@ class FCP_Comment_Rate {
         if ( $old_status !== 'approved' && $new_status !== 'approved' ) { return; }
         $this->reset_total_score( $comment );
     }
-    public function reset_total_score($comment) {
+    private function reset_total_score($comment) {
 
         $comment = self::comment_filter( $comment );
         if ( $comment === false ) { return false; }
@@ -351,30 +351,30 @@ class FCP_Comment_Rate {
     public function style_comments() {
         wp_enqueue_style( self::$pr . 'stars-comments', plugins_url( '/', __FILE__ ) . 'assets/comments.css', [], self::ver() );
     }
-    public static function style_inline($slug) {
-        static $printed_once = []; if ( $printed_once[ $slug ] ) { return; } $printed_once[ $slug ] = true;
-        echo '<style>';
-        echo "\n" . '/* wp-rate ' . $slug . ' */' . "\n";
-        include_once __DIR__ . '/assets/fs-' . $slug . '.css';
-        echo '</style>';
-    }
     public function style_inline_sizes() {
         $width = round( 100 / ( self::$stars - 1 + self::$proportions ), 3 );
         $height = round( $width * self::$proportions, 3 );
         $wh_radio = round( 100 / self::$stars, 5 );
         ?><style>.cr_stars_bar{--star_height:<?php echo $height ?>%}.cr_fields{--star_size:<?php echo $wh_radio ?>%;}</style><?php
     }
+    private static function style_inline($slug) {
+        static $printed_once = []; if ( $printed_once[ $slug ] ) { return; } $printed_once[ $slug ] = true;
+        echo '<style>';
+        echo "\n" . '/* wp-rate ' . $slug . ' */' . "\n";
+        include_once __DIR__ . '/assets/fs-' . $slug . '.css';
+        echo '</style>';
+    }
 
 
     // ************* functional
 
-    public static function is_replying() {
+    private static function is_replying() {
         if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { return $_GET['replytocom']; }
         if ( isset( $_POST['comment_parent'] ) && $_POST['comment_parent'] != '0' ) { return $_POST['comment_parent']; }
         return false;
     }
 
-    public static function can_reply($comment = '') { // doesn't extend, only limit the role capabilities
+    private static function can_reply($comment = '') { // doesn't extend, only limit the role capabilities
         $comment = self::comment_filter( $comment );
         if ( $comment === false ) { return false; }
 
@@ -385,7 +385,7 @@ class FCP_Comment_Rate {
         return true;
     }
     
-    public static function can_edit($comment = '') { // doesn't extend, only limit the role capabilities
+    private static function can_edit($comment = '') { // doesn't extend, only limit the role capabilities
         $comment = self::comment_filter( $comment );
         if ( $comment === false ) { return false; }
 
@@ -395,13 +395,13 @@ class FCP_Comment_Rate {
         return false;
     }
 
-    public static function can_moderate($comment = '') {
+    private static function can_moderate($comment = '') {
         if ( current_user_can( 'administrator' ) ) { return true; }
         return false;
     }
 
     // check if the comment fits the post type, return $comment object or false
-    public static function comment_filter($comment = '') {
+    private static function comment_filter($comment = '') {
 
         if ( $comment && is_numeric( $comment ) ) {
             $comment = get_comment( $comment );
@@ -436,14 +436,14 @@ class FCP_Comment_Rate {
         return $store[ $name ];
     }
 
-    public static function access_denied($m = '', $t = '') {
+    private static function access_denied($m = '', $t = '') {
         wp_die( $m ? $m : 'Access denied', $t ? $t : 'Access denied', [ 'response' => 403, 'back_link' => true ] );    
     }
 
 
     // ************* counting
 
-    public static function count_all($id = 0) {
+    private static function count_all($id = 0) {
         static $counted = []; if ( $counted[ $id ] ) { return $counted[ $id ]; }
 
         if ( !$id ) $id = get_the_ID();
@@ -560,7 +560,14 @@ class FCP_Comment_Rate {
         //$count = $stats['__rated_reviews']; // if only reviews with score gotta be shown
         self::summary_layout( $stats['__rating'], $count );
     }
-    
+
+    public static function stars_print($stars = 0) {
+        self::style_inline( 'stars' );
+        $stars = $stars && $stars > self::$stars ? self::$stars : $stars;
+        $width = round( $stars / self::$stars * 100, 5 );
+        self::stars_layout( $width );
+    }
+
     private static function competences_print() {
         $stats = self::count_all();
         if ( !$stats ) { return; }
@@ -571,13 +578,6 @@ class FCP_Comment_Rate {
             }
             self::competence_layout( $v, $stats[ $slug ] );
         }
-    }
-    
-    public static function stars_print($stars = 0) {
-        self::style_inline( 'stars' );
-        $stars = $stars && $stars > self::$stars ? self::$stars : $stars;
-        $width = round( $stars / self::$stars * 100, 5 );
-        self::stars_layout( $width );
     }
 
 
