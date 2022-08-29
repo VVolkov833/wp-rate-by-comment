@@ -17,7 +17,7 @@ class FCP_Comment_Rate {
     private static  $dev = true, // developers mode, avoid caching js & css
                     $pr = 'cr_', // prefix (db, css)
                     $types = ['clinic', 'doctor'], // post types
-                    $posts = [1236], // posts
+                    $posts = [], // posts
                     $schema = true, // support the schema
                     $competencies = ['Expertise', 'Kindness', 'Waiting time for an appointment', 'Facilities'],
                     //$weights = [8, 3.2, 2.4, 2], // $competencies' weights
@@ -93,7 +93,7 @@ class FCP_Comment_Rate {
 
         });
 
-//        if ( !self::comments_are_reviews( $comment ) ) { return true; }
+
         // ************* wp-admin printing conditions
 
         // hide the links in admin
@@ -146,7 +146,7 @@ class FCP_Comment_Rate {
                 [ 'comment_ID' => $comment->comment_ID ]
             );
 
-            self::access_denied('1'); // ++--bulk along with comments might go wrong. maybe hide the checkbox for reviews?
+            self::access_denied(); // ++--bulk along with comments might go wrong. maybe hide the checkbox for reviews?
         };
 
         if ( !self::can_moderate() && in_array( $new_status, ['approved', 'unapproved', 'spam'] ) ) {
@@ -164,9 +164,9 @@ class FCP_Comment_Rate {
         if ( !$commentdata['comment_parent'] ) { return $commentdata; } // not a reply
 
         $comment = self::get_comment( $commentdata['comment_parent'] );
-        if ( !$comment ) { self::access_denied('2'); } // unknown parent
+        if ( !$comment ) { self::access_denied(); } // unknown parent
     
-        if ( !self::can_reply( $comment ) ) { self::access_denied('3'); }
+        if ( !self::can_reply( $comment ) ) { self::access_denied(); }
         
         return $commentdata;
     }
@@ -176,10 +176,10 @@ class FCP_Comment_Rate {
         if ( !self::comments_are_reviews( $comment['comment_ID'] ) ) { return $data; }
 
         $comment = self::get_comment( $comment['comment_ID'] );
-        if ( !$comment ) { self::access_denied('4'); }
+        if ( !$comment ) { self::access_denied(); }
 
         if ( !self::can_edit( $comment ) ) {
-            self::access_denied('5');
+            self::access_denied();
         }
         return $data;
     }
@@ -245,10 +245,10 @@ class FCP_Comment_Rate {
         if ( get_current_screen()->id !== 'comment' ) { return; }
         if ( !self::comments_are_reviews( $_GET['c'] ) ) { return; }
         if ( self::can_edit() ) { return; }
-        self::access_denied('6');
+        self::access_denied();
     }
     
-    public function highlight_unapproved_comments() { // ++--it applies to common comments too. not bad, but oh
+    public function highlight_unapproved_comments() { // ++--it applies to common comments too. exclude edit-comments?
         if ( !in_array( get_current_screen()->id, array_merge( self::$types, ['edit-comments'] ) ) ) { return; }
         add_action( 'admin_head', function() { ?>
         <style>
@@ -698,7 +698,6 @@ new FCP_Comment_Rate();
 
 // add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f ???
 // load the gutenberg styles if are not loaded on the page (columns layout)? or make simple custom??
-// hide pingback checkbox and html formatting buttons and url.. and change url to nothing on post
 // forbid changing the name on reply?
 // forbid the author to review own entity
 // edit the rating on the back-end https://wp-kama.ru/id_8342/kak-dobavit-proizvolnye-polya-v-formu-kommentariev-wordpress.html
