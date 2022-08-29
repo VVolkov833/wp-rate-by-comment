@@ -145,7 +145,7 @@ class FCP_Comment_Rate {
                 [ 'comment_ID' => $comment->comment_ID ]
             );
 
-            self::access_denied();
+            self::access_denied('1');
         };
 
         if ( !self::can_moderate() && in_array( $new_status, ['approved', 'unapproved', 'spam'] ) ) {
@@ -157,21 +157,22 @@ class FCP_Comment_Rate {
     }
     
     public function filter_reply($commentdata) {
+        if ( !$commentdata['comment_parent'] ) { return $commentdata; } // not a reply
+
         $comment = self::comment_filter( $commentdata['comment_parent'] );
-        if ( $comment === false ) { self::access_denied(); }
+        if ( $comment === false ) { self::access_denied('2'); } // unknown parent
     
-        if ( !self::can_reply( $comment ) ) {
-            self::access_denied();
-        }
+        if ( !self::can_reply( $comment ) ) { self::access_denied('3'); }
+        
         return $commentdata;
     }
     
     function filter_edit($data, $comment, $commentarr){
         $comment = self::comment_filter( $comment['comment_ID'] );
-        if ( $comment === false ) { self::access_denied(); }
+        if ( $comment === false ) { self::access_denied('4'); }
 
         if ( !self::can_edit( $comment ) ) {
-            self::access_denied();
+            self::access_denied('5');
         }
         return $data;
     }
@@ -238,19 +239,21 @@ class FCP_Comment_Rate {
     public function hide_comments_actions_screens() { // only the edit screen there is, actually
         if ( get_current_screen()->id !== 'comment' ) { return; }
         if ( self::can_edit() ) { return; }
-        self::access_denied();
+        self::access_denied('6');
     }
     
     public function highlight_unapproved_comments() {
         if ( !in_array( get_current_screen()->id, ['clinic', 'doctor'] ) ) { return; }
-        if ( self::can_moderate() ) { return; }
-        add_action( 'admin_footer', function() { ?>
+        add_action( 'admin_head', function() { ?>
         <style>
+            <?php if ( !self::can_moderate() ) { ?>
             #the-comment-list .unapproved { opacity:0.6 }
+            <?php } ?>
             #the-comment-list .unapproved > td:last-child::before {
-                content:'[<?php _e( 'Awaiting moderation', 'fcpcr' ); ?>]\a';
+                content:'[<?php _e( 'Awaiting moderation', 'fcpcr' ) ?>]\a';
                 white-space:pre;
                 text-transform:uppercase;
+                color:#b32d2e;
             }
         </style>
         <?php });
@@ -409,8 +412,7 @@ class FCP_Comment_Rate {
         }
 
         if ( !$comment || !is_object( $comment ) ) {
-            
-            if ( isset( $_GET['action'] ) && isset( $_GET['c'] ) ) { // filter the admin screens & get actions
+            if ( is_admin() && isset( $_GET['action'] ) && isset( $_GET['c'] ) ) {
                 $comment = get_comment( $_GET['c'] );
             } elseif ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
                 $comment = get_comment( $_POST['comment_ID'] );
@@ -421,22 +423,22 @@ class FCP_Comment_Rate {
 
         if ( !$comment || !is_object( $comment ) ) { return false; } //++ || !WP_Comment object
         if ( !isset( $comment->comment_post_ID ) ) { return false; }
-        
+
         $post_type = get_post_type( $comment->comment_post_ID );
         if ( !in_array( $post_type, self::$types ) ) { return false; }
+
         return $comment;
     }
 
     private static function slug($name) {
-        static $store = [];
-
-        if ( $store[ $name ] ) { return $store[ $name ]; }
+        static $store = []; if ( $store[ $name ] ) { return $store[ $name ]; }
 
         $store[ $name ] = self::$pr . sanitize_title( $name );
         return $store[ $name ];
     }
 
     private static function access_denied($m = '', $t = '') {
+        $m = is_array( $m ) ? '<pre>'.print_r( $m, true ).'</pre>' : $m;
         wp_die( $m ? $m : 'Access denied', $t ? $t : 'Access denied', [ 'response' => 403, 'back_link' => true ] );    
     }
 
@@ -681,6 +683,7 @@ class FCP_Comment_Rate {
 
 new FCP_Comment_Rate();
 
+// !!function to check if the plugin gotta be applied (by post type, by post_ID) -> add admin page to it 'rate_apply'
 // add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f ???
 // load the gutenberg styles if are not loaded on the page (columns layout)? or make simple custom??
 // hide pingback checkbox and html formatting buttons and url.. and change url to nothing on post
@@ -688,3 +691,4 @@ new FCP_Comment_Rate();
 // forbid the author to review own entity
 // edit the rating on the back-end https://wp-kama.ru/id_8342/kak-dobavit-proizvolnye-polya-v-formu-kommentariev-wordpress.html
 // settings page https://wp-kama.ru/function/get_current_screen example 4
+// stars to a panding review
