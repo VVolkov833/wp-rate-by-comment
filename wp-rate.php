@@ -17,6 +17,7 @@ class FCP_Comment_Rate {
     private static  $dev = true, // developers mode, avoid caching js & css
                     $pr = 'cr_', // prefix (db, css)
                     $types = ['clinic', 'doctor'], // post types
+                    $posts = [1236], // posts
                     $schema = true, // support the schema
                     $competencies = ['Expertise', 'Kindness', 'Waiting time for an appointment', 'Facilities'],
                     //$weights = [8, 3.2, 2.4, 2], // $competencies' weights
@@ -41,10 +42,8 @@ class FCP_Comment_Rate {
         // ************* printing conditions
 
         add_action( 'wp', function() {
-        
             if ( is_admin() ) { return; }
-            global $post;
-            if ( !in_array( $post->post_type, self::$types ) ) { return; }
+            if ( !self::comments_are_reviews() ) { return; }
 
 
             // forms printing conditions
@@ -94,7 +93,7 @@ class FCP_Comment_Rate {
 
         });
 
-
+//        if ( !self::comments_are_reviews( $comment ) ) { return true; }
         // ************* wp-admin printing conditions
 
         // hide the links in admin
@@ -129,6 +128,8 @@ class FCP_Comment_Rate {
 
     public function limit_status_change($new_status, $old_status, $comment) {
 
+        if ( !self::comments_are_reviews( $comment ) ) { return; }
+
         // the transition hook runs after save, so gotta restore the initial status instead of just forbidding
         $restore_status = function() use ( $comment, $old_status ) {
             global $wpdb;
@@ -145,7 +146,7 @@ class FCP_Comment_Rate {
                 [ 'comment_ID' => $comment->comment_ID ]
             );
 
-            self::access_denied('1');
+            self::access_denied('1'); // ++--bulk along with comments might go wrong. maybe hide the checkbox for reviews?
         };
 
         if ( !self::can_moderate() && in_array( $new_status, ['approved', 'unapproved', 'spam'] ) ) {
@@ -157,19 +158,25 @@ class FCP_Comment_Rate {
     }
     
     public function filter_reply($commentdata) {
+
+        if ( !self::comments_are_reviews( null, $commentdata['comment_post_ID'] ) ) { return $commentdata; }
+
         if ( !$commentdata['comment_parent'] ) { return $commentdata; } // not a reply
 
-        $comment = self::comment_filter( $commentdata['comment_parent'] );
-        if ( $comment === false ) { self::access_denied('2'); } // unknown parent
+        $comment = self::get_comment( $commentdata['comment_parent'] );
+        if ( !$comment ) { self::access_denied('2'); } // unknown parent
     
         if ( !self::can_reply( $comment ) ) { self::access_denied('3'); }
         
         return $commentdata;
     }
     
-    function filter_edit($data, $comment, $commentarr){
-        $comment = self::comment_filter( $comment['comment_ID'] );
-        if ( $comment === false ) { self::access_denied('4'); }
+    public function filter_edit($data, $comment, $commentarr) {
+
+        if ( !self::comments_are_reviews( $comment['comment_ID'] ) ) { return $data; }
+
+        $comment = self::get_comment( $comment['comment_ID'] );
+        if ( !$comment ) { self::access_denied('4'); }
 
         if ( !self::can_edit( $comment ) ) {
             self::access_denied('5');
@@ -184,14 +191,12 @@ class FCP_Comment_Rate {
 
          // stars are only for the reviews (1st lvl comments)
         if ( self::is_replying() ) { return; }
-
-        $comment = self::comment_filter( $comment_id );
-        if ( $comment === false ) { return false; }
+        if ( !self::comments_are_reviews( $comment_id ) ) { return; }
 
         foreach ( self::$competencies as $v ) {
             $slug = self::slug( $v );
             if ( !isset( $_POST[ $slug ] ) || !is_numeric( $_POST[ $slug ] ) ) { continue; }
-            add_comment_meta( $comment->ID, $slug, (int) $_POST[ $slug ] );
+            add_comment_meta( $comment_id, $slug, (int) $_POST[ $slug ] );
         }
     }
 
@@ -204,14 +209,14 @@ class FCP_Comment_Rate {
         $this->reset_total_score( $comment );
     }
     private function reset_total_score($comment) {
+        if ( !self::comments_are_reviews( $comment ) ) { return; }
 
-        $comment = self::comment_filter( $comment );
-        if ( $comment === false ) { return false; }
+        $comment = self::get_comment( $comment );
+        if ( !$comment ) { return false; }
 
-        $post_id = $comment->comment_post_ID;
-
-        update_post_meta( $post_id, 'cr_total_wtd', self::count_all( $post_id )['__rating'] );
-
+        update_post_meta( $comment->comment_post_ID, 'cr_total_wtd',
+            self::count_all( $comment->comment_post_ID )['__rating']
+        );
     }
 
 
@@ -219,7 +224,7 @@ class FCP_Comment_Rate {
 
     public function hide_comments_actions_links($actions) {
 
-        if ( self::comment_filter() === false ) { return $actions; }
+        if ( !self::comments_are_reviews() || !self::get_comment() ) { return $actions; }
 
         $remove = []; // actions to remove
         if ( !self::can_reply() ) {
@@ -236,20 +241,21 @@ class FCP_Comment_Rate {
         return $actions;
     }
 
-    public function hide_comments_actions_screens() { // only the edit screen there is, actually
+    public function hide_comments_actions_screens() {
         if ( get_current_screen()->id !== 'comment' ) { return; }
+        if ( !self::comments_are_reviews( $_GET['c'] ) ) { return; }
         if ( self::can_edit() ) { return; }
         self::access_denied('6');
     }
     
-    public function highlight_unapproved_comments() {
-        if ( !in_array( get_current_screen()->id, ['clinic', 'doctor'] ) ) { return; }
+    public function highlight_unapproved_comments() { // ++--it applies to common comments too. not bad, but oh
+        if ( !in_array( get_current_screen()->id, array_merge( self::$types, ['edit-comments'] ) ) ) { return; }
         add_action( 'admin_head', function() { ?>
         <style>
             <?php if ( !self::can_moderate() ) { ?>
             #the-comment-list .unapproved { opacity:0.6 }
             <?php } ?>
-            #the-comment-list .unapproved > td:last-child::before {
+            #the-comment-list .unapproved .column-comment::before {
                 content:'[<?php _e( 'Awaiting moderation', 'fcpcr' ) ?>]\a';
                 white-space:pre;
                 text-transform:uppercase;
@@ -370,16 +376,9 @@ class FCP_Comment_Rate {
 
 
     // ************* functional
-
-    private static function is_replying() {
-        if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { return $_GET['replytocom']; }
-        if ( isset( $_POST['comment_parent'] ) && $_POST['comment_parent'] != '0' ) { return $_POST['comment_parent']; }
-        return false;
-    }
-
     private static function can_reply($comment = '') { // doesn't extend, only limit the role capabilities
-        $comment = self::comment_filter( $comment );
-        if ( $comment === false ) { return false; }
+        $comment = self::get_comment( $comment );
+        if ( !$comment ) { return false; }
 
         if ( !$comment->comment_approved && !current_user_can('administrator') ) { return false; }
         if ( (int) $comment->comment_parent !== 0 ) { return false; } // only the first lvl comment can be replied
@@ -389,11 +388,11 @@ class FCP_Comment_Rate {
     }
     
     private static function can_edit($comment = '') { // doesn't extend, only limit the role capabilities
-        $comment = self::comment_filter( $comment );
-        if ( $comment === false ) { return false; }
+        $comment = self::get_comment( $comment );
+        if ( !$comment ) { return false; }
 
         if ( current_user_can( 'administrator' ) ) { return true; }
-        if ( current_user_can( 'edit_comment', $comment->comment_ID ) && (int) $comment->user_id === get_current_user_id() ) { return true; }
+        if ( current_user_can( 'edit_comment', $comment->comment_ID ) && (int) $comment->user_id === get_current_user_id() ) { return true; } // only own comments
         
         return false;
     }
@@ -403,31 +402,45 @@ class FCP_Comment_Rate {
         return false;
     }
 
-    // check if the comment fits the post type, return $comment object or false
-    private static function comment_filter($comment = '') {
+    private static function is_replying() {
+        if ( isset( $_GET['replytocom'] ) && $_GET['replytocom'] != '0' ) { return $_GET['replytocom']; }
+        if ( isset( $_POST['comment_parent'] ) && $_POST['comment_parent'] != '0' ) { return $_POST['comment_parent']; }
+        return false;
+    }
 
-        if ( $comment && is_numeric( $comment ) ) {
-            $comment = get_comment( $comment );
-            if ( !$comment || !is_object( $comment ) ) { return false; }
-        }
+    private static function comments_are_reviews($comment = '', $post_id = '') { // use the plugin's settings or global
+    
+        $can_use = function($post_id = 0) {
+            if ( !$post_id ) { return false; }
+            if ( in_array( $post_id, self::$posts ) ) { return true; }
+            return in_array( get_post_type( $post_id ), self::$types );
+        };
+        
+        if ( $post_id ) { return $can_use( $post_id ); }
 
-        if ( !$comment || !is_object( $comment ) ) {
+        if ( !$comment ) { return $can_use( get_the_ID() ); }
+
+        $comment = self::get_comment( $comment );
+        return $comment && $can_use( $comment->comment_post_ID );
+    }
+
+    private static function get_comment($comment = '') {
+
+        $is_comment = function($c) { return $c && $c instanceof WP_Comment; };
+    
+        if ( $comment && is_numeric( $comment ) ) { return get_comment( $comment ); }
+
+        if ( !$is_comment( $comment ) ) {
             if ( is_admin() && isset( $_GET['action'] ) && isset( $_GET['c'] ) ) {
                 $comment = get_comment( $_GET['c'] );
             } elseif ( isset( $_POST['action'] ) && isset( $_POST['comment_ID'] ) ) { // filter the admin post actions
                 $comment = get_comment( $_POST['comment_ID'] );
             } else { // filter the front-end inside the comments loop
-                global $comment; // ++can just pass empty get_comment() to retrieve the global value - test it
+                $comment = get_comment();
             }
         }
 
-        if ( !$comment || !is_object( $comment ) ) { return false; } //++ || !WP_Comment object
-        if ( !isset( $comment->comment_post_ID ) ) { return false; }
-
-        $post_type = get_post_type( $comment->comment_post_ID );
-        if ( !in_array( $post_type, self::$types ) ) { return false; }
-
-        return $comment;
+        return $is_comment( $comment ) ? $comment : null;
     }
 
     private static function slug($name) {
@@ -683,7 +696,6 @@ class FCP_Comment_Rate {
 
 new FCP_Comment_Rate();
 
-// !!function to check if the plugin gotta be applied (by post type, by post_ID) -> add admin page to it 'rate_apply'
 // add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f ???
 // load the gutenberg styles if are not loaded on the page (columns layout)? or make simple custom??
 // hide pingback checkbox and html formatting buttons and url.. and change url to nothing on post
