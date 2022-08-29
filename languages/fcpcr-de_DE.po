@@ -68,3 +68,7 @@ msgstr "Wartezeit für Termin"
 
 msgid "Facilities"
 msgstr "Räumlichkeit"
+
+#. wp-admin
+msgid "Awaiting moderation"
+msgstr "Warten auf Moderation"
