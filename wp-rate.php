@@ -17,7 +17,7 @@ class FCP_Comment_Rate {
     private static  $dev = true, // developers mode, avoid caching js & css
                     $pr = 'cr_', // prefix (db, css)
                     $types = ['clinic', 'doctor'], // post types
-                    $posts = [], // posts
+                    $posts = [], // post ids
                     $schema = true, // support the schema
                     $competencies = ['Expertise', 'Kindness', 'Waiting time for an appointment', 'Facilities'],
                     //$weights = [8, 3.2, 2.4, 2], // $competencies' weights
@@ -80,7 +80,7 @@ class FCP_Comment_Rate {
 
 
             // add the rating values to the comment text
-            add_filter( 'comment_text', [$this, 'comment_rating_draw'] );
+            add_filter( 'comment_text', [$this, 'comment_rating_draw'], 30 ); // after paragraphs are spread
 
             // load styles
             if ( comments_open() ) {
@@ -103,6 +103,7 @@ class FCP_Comment_Rate {
         // filter displaying the editing screen
         add_action( 'current_screen', [$this, 'hide_comments_actions_screens'] );
         add_action( 'current_screen', [$this, 'highlight_unapproved_comments'] );
+        add_action( 'current_screen', [$this, 'hide_changing_status_options'] );
 
 
         // ************* operations with comments to limit
@@ -230,11 +231,11 @@ class FCP_Comment_Rate {
         if ( !self::can_reply() ) {
             $remove = array_merge( $remove, ['reply'] );
         }
-        if ( !self::can_edit() ) {
-            $remove = array_merge( $remove, ['edit', 'quickedit', 'trash', 'delete', 'spam', 'approve', 'unapprove'] );
-        }
         if ( !self::can_moderate() ) {
             $remove = array_merge( $remove, ['spam', 'approve', 'unapprove'] );
+        }
+        if ( !self::can_edit() ) {
+            $remove = array_merge( $remove, ['edit', 'quickedit', 'trash', 'delete', 'spam', 'approve', 'unapprove'] );
         }
 
         foreach ( $remove as $v ) { unset( $actions[ $v ] ); }
@@ -263,6 +264,18 @@ class FCP_Comment_Rate {
             }
         </style>
         <?php });
+    }
+    
+    public function hide_changing_status_options() {
+        if ( get_current_screen()->id !== 'comment' ) { return; }
+        if ( !self::comments_are_reviews( $_GET['c'] ) ) { return; }
+        if ( self::can_moderate() ) { return; }
+        add_action( 'admin_head', function() { ?>
+        <style>
+            #comment-status { display:none }
+        </style>
+        <?php });
+        // there is a protection on change attempt, so only hidding
     }
 
 
@@ -323,7 +336,7 @@ class FCP_Comment_Rate {
         // remove not used fields
         add_filter( 'comment_form_default_fields', function($fields) {
             unset( $fields['url'] );
-            unset( $fields['cookies'] );
+            //unset( $fields['cookies'] );
             return $fields;
         });
 
@@ -543,11 +556,11 @@ class FCP_Comment_Rate {
 
     // ************* printing functions
 
-    public static function stars_n_rating_print() {
+    public static function stars_n_rating_print($skipempty = false) {
         self::style_inline( 'rating-short' );
         $stats = self::count_all();
         if ( !$stats || !$stats['__rating'] ) {
-            self::rating_short_layout_empty();
+            if ( !$skipempty ) { self::rating_short_layout_empty(); }
             return;
         }
         if ( self::$schema ) {
@@ -651,7 +664,7 @@ class FCP_Comment_Rate {
         <div class="<?php echo self::$pr ?>summary-headline">
             <?php _e( 'Reviews', 'fcpcr' ) ?> (<?php echo $reviews ?>)
         </div>
-        <?php self::stars_n_rating_print() ?>
+        <?php self::stars_n_rating_print( true ) ?>
         <?php self::competences_print() ?>
         <?php
     }
@@ -696,10 +709,15 @@ class FCP_Comment_Rate {
 
 new FCP_Comment_Rate();
 
-// add_filter( 'allow_empty_comment', '__return_true' ); // ++can't be custom typed, can make a custom f ???
+// add_filter( 'allow_empty_comment', '__return_true' ); // comment or all stars - one must be
 // load the gutenberg styles if are not loaded on the page (columns layout)? or make simple custom??
 // forbid changing the name on reply?
 // forbid the author to review own entity
 // edit the rating on the back-end https://wp-kama.ru/id_8342/kak-dobavit-proizvolnye-polya-v-formu-kommentariev-wordpress.html
 // settings page https://wp-kama.ru/function/get_current_screen example 4
 // stars to a panding review
+// style the "will be published after moderation" phrase
+// maybe not hide the url field and restore it in the template, but hide later via functions.php
+//      maybe even use the original template better?
+// mess with current_user_can( 'administrator' ) - add editor or find a proper capability
+// add (edited) if a comment was modified
