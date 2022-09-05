@@ -89,7 +89,7 @@ class FCP_Comment_Rate {
             if ( get_comments_number() || $_GET['unapproved'] ) {
                 add_action( 'wp_enqueue_scripts', [$this, 'style_comments'] );
             }
-            add_action( 'wp_head', [$this, 'style_inline_sizes'] );
+            //add_action( 'wp_head', [$this, 'style_inline_sizes'] ); //++--stars can be printed somewhere outside
 
         });
 
@@ -373,18 +373,21 @@ class FCP_Comment_Rate {
     public function style_comments() {
         wp_enqueue_style( self::$pr . 'stars-comments', plugins_url( '/', __FILE__ ) . 'assets/comments.css', [], self::ver() );
     }
-    public function style_inline_sizes() {
-        $width = round( 100 / ( self::$stars - 1 + self::$proportions ), 3 );
-        $height = round( $width * self::$proportions, 3 );
-        $wh_radio = round( 100 / self::$stars, 5 );
-        ?><style>.cr_stars_bar{--star_height:<?php echo $height ?>%}.cr_fields{--star_size:<?php echo $wh_radio ?>%;}</style><?php
-    }
+
     private static function style_inline($slug) {
         static $printed_once = []; if ( $printed_once[ $slug ] ) { return; } $printed_once[ $slug ] = true;
         echo '<style>';
         echo "\n" . '/* wp-rate ' . $slug . ' */' . "\n";
         include_once __DIR__ . '/assets/fs-' . $slug . '.css';
         echo '</style>';
+        if ( $slug !== 'stars' ) { return; }
+        self::style_inline_sizes();
+    }
+    private static function style_inline_sizes() {
+        $width = round( 100 / ( self::$stars - 1 + self::$proportions ), 3 );
+        $height = round( $width * self::$proportions, 3 );
+        $wh_radio = round( 100 / self::$stars, 5 );
+        ?><style>.cr_stars_bar{--star_height:<?php echo $height ?>%}.cr_fields{--star_size:<?php echo $wh_radio ?>%;}</style><?php
     }
 
 
