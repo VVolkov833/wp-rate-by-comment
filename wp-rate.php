@@ -86,7 +86,7 @@ class FCP_Comment_Rate {
             if ( comments_open() ) {
                 add_action( 'wp_enqueue_scripts', [$this, 'style_form'] );
             }
-            if ( get_comments_number() || $_GET['unapproved'] ) {
+            if ( get_comments_number() || !empty( $_GET['unapproved'] ) ) {
                 add_action( 'wp_enqueue_scripts', [$this, 'style_comments'] );
             }
             //add_action( 'wp_head', [$this, 'style_inline_sizes'] ); //++--stars can be printed somewhere outside
@@ -375,7 +375,7 @@ class FCP_Comment_Rate {
     }
 
     private static function style_inline($slug) {
-        static $printed_once = []; if ( $printed_once[ $slug ] ) { return; } $printed_once[ $slug ] = true;
+        static $printed_once = []; if ( isset( $printed_once[ $slug ] ) ) { return; } $printed_once[ $slug ] = true;
         echo '<style>';
         echo "\n" . '/* wp-rate ' . $slug . ' */' . "\n";
         include_once __DIR__ . '/assets/fs-' . $slug . '.css';
@@ -475,7 +475,7 @@ class FCP_Comment_Rate {
     // ************* counting
 
     private static function count_all($id = 0) {
-        static $counted = []; if ( $counted[ $id ] ) { return $counted[ $id ]; }
+        static $counted = []; if ( isset( $counted[ $id ] ) ) { return $counted[ $id ]; }
 
         if ( !$id ) $id = get_the_ID();
     
