@@ -460,7 +460,7 @@ class FCP_Comment_Rate {
     }
 
     private static function slug($name) {
-        static $store = []; if ( $store[ $name ] ) { return $store[ $name ]; }
+        static $store = []; if ( isset( $store[ $name ] ) ) { return $store[ $name ]; }
 
         $store[ $name ] = self::$pr . sanitize_title( $name );
         return $store[ $name ];
