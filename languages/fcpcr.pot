@@ -1,0 +1,57 @@
+msgid "Your review is awaiting moderation."
+msgstr ""
+
+#. Leave a reply to THE COMMENT AUTHOR'S NAME
+msgid "Leave a reply to"
+msgstr ""
+
+msgid "Leave a Review"
+msgstr ""
+
+#. the author's or admin's reply to a review
+msgid "Your Reply"
+msgstr ""
+
+msgid "Your Review"
+msgstr ""
+
+#. submit button title
+msgid "Reply"
+msgstr ""
+
+#. submit button title
+msgid "Post Review"
+msgstr ""
+
+#. imperative verb for the headline
+msgid "Rate"
+msgstr ""
+
+#. this one is not used in the plugin directly, gotta be short
+msgid "Review and Rate"
+msgstr ""
+
+msgid "Reviews"
+msgstr ""
+
+msgid "Rating"
+msgstr ""
+
+msgid "Not rated yet"
+msgstr ""
+
+msgid "Reply to this review"
+msgstr ""
+
+#. local
+msgid "Expertise"
+msgstr ""
+
+msgid "Kindness"
+msgstr ""
+
+msgid "Waiting time for an appointment"
+msgstr ""
+
+msgid "Facilities"
+msgstr ""

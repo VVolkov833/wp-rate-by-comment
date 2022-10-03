@@ -380,7 +380,7 @@ class FCP_Comment_Rate {
         echo "\n" . '/* wp-rate ' . $slug . ' */' . "\n";
         include_once __DIR__ . '/assets/fs-' . $slug . '.css';
         echo '</style>';
-        if ( $slug !== 'stars' ) { return; }
+        if ( $slug !== 'stars' && !comments_open() ) { return; }
         self::style_inline_sizes();
     }
     private static function style_inline_sizes() {
