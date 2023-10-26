@@ -8,6 +8,7 @@ Requires PHP: 5.2.4
 Author: Firmcatalyst, Vadim Volkov
 Text Domain: fcpcr
 Domain Path: /languages
+GitHub Plugin URI: https://github.com/VVolkov833/wp-rate-by-comment
 */
 
 defined( 'ABSPATH' ) || exit;
