@@ -2,7 +2,7 @@
 /*
 Plugin Name: Comment and Rate
 Description: Adds custom rating fields to a particular post type's comments
-Version: 2.0.0
+Version: 2.0.11
 Requires at least: 4.7
 Requires PHP: 5.2.4
 Author: Firmcatalyst, Vadim Volkov
